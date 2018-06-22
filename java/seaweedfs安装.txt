@@ -1,0 +1,21 @@
+since 2018-06-05 wep
+seaweedfs安装
+1:https://github.com/chrislusf/seaweedfs/releases  下载安装包解压到某个文件夹
+
+2:在解压后的目录下启动服务 ./weed master & (linux下)  windows:.\weed master
+
+
+3:启动文件存储服务: ./weed volume -dir="/root/webserver/weed_0.70beta_linux_amd64/data" -max=5 -mserver="localhost:9333" -port=9080 & (linux下)
+                    ./weed volume -dir="/var/seaweedfs/data" -max=5 -mserver="localhost:9333" -port=9080 &
+		    ./weed volume -dir="/var/seaweedfs/data" -max=5 -mserver="localhost:9333" -port=9080 -publicUrl=47.98.176.255 &
+                 其中 /root/webserver/weed_0.70beta_linux_amd64/data 该路径为文件存储的真实路径
+		  windows:
+		   .\weed volume -dir="\root\webserver\weed_0.70beta_linux_amd64\data" -max=5 -mserver="localhost:9333" -port=9080
+
+4:用文件服务上传文件时，需先提交一个存储请求用于分配全局的文件id:curl -X POST http://localhost:9333/dir/assign
+
+5:用4得到的文件id上传文件 curl -X PUT -F file=@/root/webserver/weed_0.70beta_linux_amd64/error.jpg http://127.0.0.1:9080/5,019d90e98a
+                          其中5,019d90e98a 为得到的文件id
+
+			  curl -X PUT -F file=@/var/seaweedfs/05.jpg http://127.0.0.1:9080/2,025d54ebcd
+			  2,025d54ebcd
