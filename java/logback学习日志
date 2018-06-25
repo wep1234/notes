@@ -1,0 +1,6 @@
+优先级顺序：TRACE < DEBUG < INFO < WARN < ERROR
+
+logger.debug("Entry number: " + i + " is " + String.valueOf(entry[i]));在构造消息参数时有性能消耗，即把整数 i 和 entry[i]都转换为字符串时，
+还有连接多个字符串时。不管消息会不会被记录，都会造成上述消耗。
+最好使用logger.debug("The entry is {}.", entry);在评估是否作记录后，仅当需要作记录时，logger 才会格式化消息，用 entry 的字符串值替换"{}"。
+换句话说，当记录语句被禁用时，这种方法不会产生参数构造所带来的性能消耗。
