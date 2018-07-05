@@ -1,0 +1,77 @@
+注意事项，主从服务器的mysql版本最好统一，如果不一致的话，主的版本低于从的版本
+编辑 C:\ProgramData\MySQL\MySQL Server 5.6\my.ini
+##cd /d C:\Program Files\MySQL\MySQL Server 5.6\bin 
+windows（当前是做为主）
+	1：创建用户
+		create user repl; 
+		GRANT REPLICATION SLAVE ON *.* TO 'repl'@'192.168.3.%' IDENTIFIED BY 'mysql';
+	2：修改配置文件my.ini
+    my.ini 在[mysqld]下
+    server-id=1
+    log-bin=master-bin
+    log-bin-index=master-bin.index
+    binlog-do-db=test#同步的数据库
+    binlog-ignore-db=mysql#不需要同步的数据库
+	3:重启mysql服务
+    net stop mysql56 停止本机mysql（mysql在本机的服务名是mysql56）
+    net start mysql56 启动本机mysql
+	4：查看日志
+	  SHOW MASTER STATUS;
+linux（当前做为从）
+	1：修改配置文件my.cnf（一般在/etc/my.cnf）
+		server-id=2#与主服务不同
+		relay-log-index=slave-relay-bin.index
+		relay-log=slave-relay-bin 
+		replicate-do-db=test#需要同步的表
+		replicate-ignore-db=mysql#不需要同步的表
+	2.重启mysql：service mysqld restart
+	3：连接Master：
+	   change master to master_host='ipxxxxxxx',
+	   master_port=3307,
+	   master_user='repl',
+	   master_password='xxxxx', 
+	   master_log_file='master-bin.000001',
+	   master_log_pos=4;
+	4：查看从服务状态
+	   show slave status;
+	   show slave status\G;
+
+忘记mysql服务器密码的时候）
+	1.先停掉原来的服务
+	   service mysqld stop
+	2.使用安全模式登陆，跳过密码验证
+	   mysqld_safe --user=mysql --skip-grant-tables --skip-networking&
+	3.登陆
+	   mysql -uroot  mysql
+	   set global read_only=1;//(读写属性)
+	   flush privileges;
+	   grant all privileges on *.* to 'root'@'localhost' identified by 'root' with grant option;
+
+mysql 常用命令
+ select @@datadir;(查看mysqldata目录)
+ show variables like '%error%';（查看错误日志）
+
+linux mysql创建用户，密码设置不能太简单
+ create user 'slavetest'@'%' identified by 'slavetest';
+ grant select,delete,update,create,drop on *.* to slavetest"%" identified by "slavetest";
+ grant all privileges on *.* to root@’localhost’ 
+
+从服务器连不上主服务器可能是防火墙开启的缘故，老版的linux中selinux默认开启，阿里云上的都是关闭的
+查看SELinux状态 设置为关闭
+mysql 里面\!执行shell语句
+\! iptables -L
+\! getenforce 查看selinux状态
+\! /usr/sbin/sestatus 
+\! setenforce 0 用于关闭selinux防火墙，但重启后失效
+\! /usr/sbin/sestatus
+\! getenforce
+永久关闭
+vim /etc/selinux/config
+将SELINUX=enforcing改为SELINUX=disabled（改完后重启掉 reboot）
+reboot
+
+ln -s /var/lib/mysql/mysql /usr/bin
+
+
+create user 'repl'@'%' identified by 'password!';
+GRANT REPLICATION SLAVE ON *.* TO 'repl'@'ipxxxx' IDENTIFIED BY 'password';（用户是根据用户名加ip匹配的，所以多台从服务器可以使用相同名字的用户，密码可以不同）
