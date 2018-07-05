@@ -1,0 +1,46 @@
+Firewall service的基本使用
+
+@since 2018-05-28
+@author pzp
+
+系统要求
+=====================================================
+ CentOS 7.x
+
+基本操作
+=====================================================
+1. 防火墙状态
+ systemctl status firewalld
+
+2. 开启防火墙
+ systemctl start firewalld
+
+3. 关闭防火墙
+ systemctl stop firewalld
+
+4. 查看端口状态
+ #查看指定端口
+ firewall-cmd  --query-port=PORT/tcp
+ #查看所有端口
+ firewall-cmd  --zone=public --list-ports
+
+5. 开放指定端口
+ #临时开放 - reboot后失效
+ firewall-cmd --add-port=PORT/tcp
+ #永久开放
+ firewall-cmd --add-port=PORT/tcp --permanent
+
+ #使开放生效
+ firewall-cmd --reload
+
+6. 关闭指定端口
+ #临时关闭 - reboot后失效
+ firewall-cmd --remove-port=PORT/tcp
+ #永久关闭
+ firewall-cmd --remove-port=PORT/tcp --permanent
+
+ #使关闭生效
+ firewall-cmd --reload
+
+7. 显示所有状态
+ firewall-cmd --state
