@@ -1,0 +1,37 @@
+Mysql的binlog日志作用是用来记录mysql内部增删改查等对mysql数据库有更新的内容的记录（对数据库的改动，主要用于数据库的主从复制以及增量恢复。
+binlog日志必须打开log-bin功能才能生存binlog日志
+1、打开MySQL的log-bin功能
+  编辑my.cnf配置文件
+  # grep log-bin my.cnf
+  log-bin = /data/3306/mysql-bin
+2.查看是否启用了日志
+mysql>show variables like 'log_bin';
+
+Mysqlbinlog功能是将Mysql的binlog日志转换成Mysql语句，默认情况下binlog日志是二进制文件，无法直接查看。
+　　Mysqlbinlog参数
+    参数	描述
+    -d	指定库的binlog
+    -r	相当于重定向到指定文件
+    --start-position--stop-position	按照指定位置精确解析binlog日志（精确），如不接--stop-positiion则一直到binlog日志结尾
+    --start-datetime--stop-datetime	按照指定时间解析binlog日志（模糊，不准确），如不接--stop-datetime则一直到binlog日志结尾
+
+1.解析ceshi数据库的binlog日志并写入my.sql文件
+ #mysqlbinlog -d ceshi mysql-bin.000003 -r my.sql
+2.使用位置精确解析binlog日志
+  #mysqlbinlog mysql-bin.000003 --start-position=100  --stop-position=200 -r my.sql
+
+日志乱码  –base64-output=DECODE-ROWS -v
+/usr/local/mysql/bin/mysqlbinlog --base64-output=DECODE-ROWS -v mysql-bin.000003
+mysqlbinlog --base64-output=DECODE-ROWS -v -d ceshi mysql-bin.000001 -r my.sql
+
+3、MySQL binlog的三种工作模式
+　　（1）Row level
+　　日志中会记录每一行数据被修改的情况，然后在slave端对相同的数据进行修改。
+　　优点：能清楚的记录每一行数据修改的细节
+　　缺点：数据量太大
+　　（2）Statement level（默认）
+　　每一条被修改数据的sql都会记录到master的bin-log中，slave在复制的时候sql进程会解析成和原来master端执行过的相同的sql再次执行
+　　优点：解决了 Row level下的缺点，不需要记录每一行的数据变化，减少bin-log日志量，节约磁盘IO，提高新能
+　　缺点：容易出现主从复制不一致
+　　（3）Mixed（混合模式）
+　　结合了Row level和Statement level的优点
