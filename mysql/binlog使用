@@ -35,3 +35,164 @@ mysqlbinlog --base64-output=DECODE-ROWS -v -d ceshi mysql-bin.000001 -r my.sql
 　　缺点：容易出现主从复制不一致
 　　（3）Mixed（混合模式）
 　　结合了Row level和Statement level的优点
+4、常用的binlog日志操作命令
+    1）查看所有binlog日志列表
+    mysql> show master logs;
+    2）查看master状态，即最后(最新)一个binlog日志的编号名称，及其最后一个操作事件pos结束点(Position)值
+    3）flush刷新log日志，自此刻开始产生一个新编号的binlog日志文件
+     mysql> flush logs; 
+    mysql> show master logs; 
+    注意：
+    每当mysqld服务重启时，会自动执行此命令，刷新binlog日志；在mysqldump备份数据时加 -F 选项也会刷新binlog日志；
+   4）重置(清空)所有binlog日志
+   mysql> reset master;
+5、查看binlog日志内容，常用有两种方式：
+   1）使用mysqlbinlog自带查看命令法：
+    注意：
+    -->binlog是二进制文件，普通文件查看器cat、more、vim等都无法打开，必须使用自带的mysqlbinlog命令查看
+    -->binlog日志与数据库文件在同目录中
+    -->在MySQL5.5以下版本使用mysqlbinlog命令时如果报错，就加上 “--no-defaults”选项
+   使用mysqlbinlog命令查看binlog日志内容，下面截取其中的一个片段分析：
+   [root@vm-002 mysql]# mysqlbinlog mysql-bin.000002
+   # at 624
+   #160925 21:29:53 server id 1 end_log_pos 796 Query	thread_id=3	exec_time=0	error_code=0
+   SET TIMESTAMP=1474810193/*!*/;
+   insert into member(`name`,`sex`,`age`,`classid`) values('wangshibo','m',27,'cls1'),('guohuihui','w',27,'cls2')        #执行的sql语句
+   /*!*/;
+   # at 796
+   #160925 21:29:53 server id 1 end_log_pos 823 Xid = 17                  #执行的时间
+   .............
+   解释：
+   server id 1 ： 数据库主机的服务号；
+   end_log_pos 796： sql结束时的pos节点
+   thread_id=11： 线程号
+   2）上面这种办法读取出binlog日志的全文内容比较多，不容易分辨查看到pos点信息
+   下面介绍一种更为方便的查询命令：
+   命令格式：
+   mysql> show binlog events [IN 'log_name'] [FROM pos] [LIMIT [offset,] row_count];
+   参数解释：
+   IN 'log_name' ：指定要查询的binlog文件名(不指定就是第一个binlog文件)
+   FROM pos ：指定从哪个pos起始点开始查起(不指定就是从整个文件首个pos点开始算)
+   LIMIT [offset,] ：偏移量(不指定就是0)
+   row_count ：查询总条数(不指定就是所有行)
+   mysql> show binlog events in 'mysql-bin.000002'\G;
+   上面这条语句可以将指定的binlog日志文件，分成有效事件行的方式返回，并可使用limit指定pos点的起始偏移，查询条数！
+   如下操作示例：
+   a）查询第一个(最早)的binlog日志：
+   mysql> show binlog events\G;
+   b）指定查询 mysql-bin.000002这个文件：
+   mysql> show binlog events in 'mysql-bin.000002'\G;
+   c）指定查询 mysql-bin.000002这个文件，从pos点:624开始查起：
+   mysql> show binlog events in 'mysql-bin.000002' from 624\G;
+   d）指定查询 mysql-bin.000002这个文件，从pos点:624开始查起，查询10条（即10条语句）
+   mysql> show binlog events in 'mysql-bin.000002' from 624 limit 10\G;
+   e）指定查询 mysql-bin.000002这个文件，从pos点:624开始查起，偏移2行（即中间跳过2个），查询10条
+   mysql> show binlog events in 'mysql-bin.000002' from 624 limit 2,10\G;
+
+6.执行定时任务
+  ops库会在每天凌晨4点进行一次完全备份的定时计划任务，如下：
+ [root@vm-002 ~]# crontab -l
+  0 4 * * * /usr/bin/mysqldump -uroot -p -B -F -R -x --master-data=2 ops|gzip >/opt/backup/ops_$(date +%F).sql.gz
+  这里手动执行下，将ops数据库备份到/opt/backup/ops_$(date +%F).sql.gz文件中：
+ [root@vm-002 ~]# mysqldump -uroot -p -B -F -R -x --master-data=2 ops|gzip >/opt/backup/ops_$(date +%F).sql.gz
+ Enter password: 
+ [root@vm-002 ~]# ls /opt/backup/
+ ops_2016-09-25.sql.gz
+ 参数说明：
+-B：指定数据库
+-F：刷新日志
+-R：备份存储过程等
+-x：锁表
+--master-data：在备份语句里添加CHANGE MASTER语句以及binlog文件及位置点信息
+
+1当不小心删库的时候
+ 先备份一下最后一个binlog日志文件：
+[root@vm-002 ~]# cd /var/lib/mysql/
+[root@vm-002 mysql]# cp -v mysql-bin.000003 /opt/backup/
+`mysql-bin.000003' -> `/opt/backup/mysql-bin.000003'
+[root@vm-002 mysql]# ls /opt/backup/
+mysql-bin.000003 ops_2016-09-25.sql.gz
+
+2接着执行一次刷新日志索引操作，重新开始新的binlog日志记录文件。按理说mysql-bin.000003
+3这个文件不会再有后续写入了，因为便于我们分析原因及查找ops节点，以后所有数据库操作都会写入到下一个日志文件。
+ mysql> flush logs;
+ Query OK, 0 rows affected (0.13 sec)
+
+ mysql> show master status;
+ +------------------+----------+--------------+------------------+
+ | File | Position | Binlog_Do_DB | Binlog_Ignore_DB |
+ +------------------+----------+--------------+------------------+
+ | mysql-bin.000004 | 106 | | |
+ +------------------+----------+--------------+------------------+
+ 1 row in set (0.00 sec)
+4读取binlog日志，分析问题。
+ 方法一：使用mysqlbinlog读取binlog日志：
+ [root@vm-002 ~]# cd /var/lib/mysql/
+ [root@vm-002 mysql]# mysqlbinlog mysql-bin.000003
+
+ 方法二：登录服务器，并查看(推荐此种方法)
+ mysql> show binlog events in 'mysql-bin.000003';
+ mysql> show binlog events in 'mysql-bin.000003'\G;
+5先把凌晨4点全备份的数据恢复：
+[root@vm-002 ~]# cd /opt/backup/
+[root@vm-002 backup]# ls
+mysql-bin.000003 ops_2016-09-25.sql.gz
+[root@vm-002 backup]# gzip -d ops_2016-09-25.sql.gz 
+[root@vm-002 backup]# mysql -uroot -p -v < ops_2016-09-25.sql 
+Enter password: 
+8）
+从binlog日志恢复数据
+恢复命令的语法格式：
+mysqlbinlog mysql-bin.0000xx | mysql -u用户名 -p密码 数据库名
+
+--------------------------------------------------------
+常用参数选项解释：
+--start-position=875 起始pos点
+--stop-position=954 结束pos点
+--start-datetime="2016-9-25 22:01:08" 起始时间点
+--stop-datetime="2019-9-25 22:09:46" 结束时间点
+--database=zyyshop 指定只恢复zyyshop数据库(一台主机上往往有多个数据库，只限本地log日志)
+-------------------------------------------------------- 
+不常用选项： 
+-u --user=name 连接到远程主机的用户名
+-p --password[=name] 连接到远程主机的密码
+-h --host=name 从远程主机上获取binlog日志
+--read-from-remote-server 从某个MySQL服务器上读取binlog日志
+--------------------------------------------------------
+小结：实际是将读出的binlog日志内容，通过管道符传递给mysql命令。这些命令、文件尽量写成绝对路径；
+
+a）完全恢复(需要手动vim编辑mysql-bin.000003，将那条drop语句剔除掉)
+[root@vm-002 backup]# /usr/bin/mysqlbinlog /var/lib/mysql/mysql-bin.000003 | /usr/bin/mysql -uroot -p123456 -v ops
+
+b）指定pos结束点恢复(部分恢复)：
+--stop-position=471 pos结束节点（按照事务区间算，是471）
+注意：
+此pos结束节点介于“member表原始数据”与更新“name='李四'”之前的数据，这样就可以恢复到更改“name='李四'”之前的数据了。
+操作如下：
+[root@vm-002 ~]# /usr/bin/mysqlbinlog --stop-position=471 --database=ops /var/lib/mysql/mysql-bin.000003 | /usr/bin/mysql -uroot -p123456 -v ops
+恢复截止到更改“name='李四'”之间的数据（按照事务区间算，是673）
+[root@vm-002 ~]# /usr/bin/mysqlbinlog --stop-position=673 --database=ops /var/lib/mysql/mysql-bin.000003 | /usr/bin/mysql -uroot -p123456 -v ops
+c）指定pso点区间恢复(部分恢复)：
+更新 name='李四' 这条数据，日志区间是Pos[538] --> End_log_pos[646]，按事务区间是：Pos[471] --> End_log_pos[673]
+
+更新 name='小二' 这条数据，日志区间是Pos[740] --> End_log_pos[848]，按事务区间是：Pos[673] --> End_log_pos[875]
+
+c1）
+单独恢复 name='李四' 这步操作，可这样：
+按照binlog日志区间单独恢复：
+[root@vm-002 ~]# /usr/bin/mysqlbinlog --start-position=538 --stop-position=646 --database=ops /var/lib/mysql/mysql-bin.000003 | /usr/bin/mysql -uroot -p123456 -v ops
+
+按照事务区间单独恢复
+[root@vm-002 ~]# /usr/bin/mysqlbinlog --start-position=471 --stop-position=673 --database=ops /var/lib/mysql/mysql-bin.000003 | /usr/bin/mysql -uroot -p123456 -v ops
+
+c2）
+单独恢复 name='小二' 这步操作，可这样：
+按照binlog日志区间单独恢复：
+[root@vm-002 ~]# /usr/bin/mysqlbinlog --start-position=740 --stop-position=848 --database=ops /var/lib/mysql/mysql-bin.000003 | /usr/bin/mysql -uroot -p123456 -v ops
+
+按照事务区间单独恢复
+[root@vm-002 ~]# /usr/bin/mysqlbinlog --start-position=673 --stop-position=875 --database=ops /var/lib/mysql/mysql-bin.000003 | /usr/bin/mysql -uroot -p123456 -v ops
+
+c3）
+将 name='李四'、name='小二' 多步操作一起恢复，需要按事务区间，可这样：
+[root@vm-002 ~]# /usr/bin/mysqlbinlog --start-position=471 --stop-position=875 --database=ops /var/lib/mysql/mysql-bin.000003 | /usr/bin/mysql -uroot -p123456 -v ops
