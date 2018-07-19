@@ -1,0 +1,73 @@
+linux下利用openssl来实现证书的颁发（详细步骤）
+1、首先需要安装openssl，一个开源的实现加解密和证书的专业系统。在centos下可以利用yum安装。
+
+ 
+
+2、openssl的配置文件是openssl.cnf，我们一般就是用默认配置就可以。如果证书有特殊要求的话，可以修改配置适应需求。这样必须把相关的文件放到配置文件指定的目录下面。
+
+ 
+
+3、首先需要利用openssl生成根证书，以后的服务器端证书或者客户端证书都用他来签发，可以建立多个根证书，就像对应不同的公司一样
+
+   #生成根证书的私钥 
+
+openssl genrsa -out /etc/pki/CA/ca.key
+
+  #利用私钥生成一个根证书的申请，一般证书的申请格式都是csr。所以私钥和csr一般需要保存好
+
+openssl req -new -key /etc/pki/CA/ca.key -out /etc/pki/CA/ca.csr
+
+  #自签名的方式签发我们之前的申请的证书，生成的证书为ca.crt
+
+openssl x509 -req -days 3650 -in /etc/pki/CA/ca.csr -signkey /etc/pki/CA/ca.key -out /etc/pki/CA/ca.crt
+
+  #为我们的证书建立第一个序列号，一般都是用4个字符，这个不影响之后的证书颁发等操作
+
+echo FACE > /etc/pki/CA/serial
+
+  #建立ca的证书库，不影响后面的操作，默认配置文件里也有存储的地方
+
+touch /etc/pki/CA/index.txt
+
+  #建立证书回收列表保存失效的证书
+
+openssl ca -gencrl -out /etc/pki/CA/ca.crl -crldays 7
+
+已上就完成了根证书的相关操作，下一步可以颁发证书了。
+
+ 
+
+4、生成和签发服务器身份验证证书，注意证书是自签名的，浏览器会提示不受信任
+
+  #建立服务器验证证书的私钥
+
+openssl genrsa -out /etc/pki/CA/server.key
+
+  #生成证书申请文件
+
+openssl req -new -key /etc/pki/CA/server.key -out /etc/pki/CA/server.csr
+
+  #利用根证书签发服务器身份验证证书
+
+openssl ca -in /etc/pki/CA/server.csr -cert /etc/pki/CA/ca.crt -keyfile /etc/pki/CA/ca.key -out /etc/pki/CA/server.crt
+
+ 
+
+5、签发客户端身份认证证书
+
+  #生成私钥
+
+openssl genrsa -out wep-admin.key 2048
+
+  #生成证书请求文件
+openssl req -new -key wep-admin.key -out wep-admin.csr
+
+  #签发证书
+openssl ca -in wep-admin.csr -out wep-admin.crt -cert ca.crt -keyfile ca.key
+
+
+  #生成pfx格式
+openssl pkcs12 -export -clcerts -in wep-admin.crt -inkey wep-admin.key -out wep-admin.p12
+Enter Export Password:cert20180718
+
+客户端证书完成，注意如果在web服务器上使用客户端证书，需要在web服务器上使用根证书对客户端进行验证，切记！
