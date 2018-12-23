@@ -1,0 +1,2 @@
+mvn clean package;//打包
+mvn install;//把本地jar包添加到本地maven库
