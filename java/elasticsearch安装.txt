@@ -1,0 +1,29 @@
+linux
+下载 wget https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-6.2.4.tar.gz
+
+tar -zxvf elasticsearch-6.2.4.tar.gz
+
+mv elasticsearch-6.2.4 /usr
+
+启动直接报killed 内存不足
+Java HotSpot(TM) 64-Bit Server VM warning: INFO: os::commit_memory(0x0000000085330000, 2060255232, 0) failed; error='Cannot allocate memory' (errno=12)
+# vim config/jvm.options
+-Xms2g
+-Xmx2g
+修改为
+-Xms512m
+-Xms512m
+
+
+org.elasticsearch.bootstrap.StartupException: java.lang.RuntimeException: can not run elasticsearch as root
+adduser es
+passwd es
+   （密码）essearch
+
+  chown -R es /usr/elasticsearch-6.2.4
+
+
+  su - es
+
+  /usr/elasticsearch-6.2.4/bin/elasticsearch 启动
+  nohup /usr/elasticsearch-6.2.4/bin/elasticsearch &
