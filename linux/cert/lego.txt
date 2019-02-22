@@ -1,0 +1,24 @@
+lego --email="18868804482@163.com" --domains="admin.wangenpei.com" --domains="pc.wangenpei.com" --domains="mini.wangenpei.com" --http --http.port :8090 run
+lego --email="18868804482@163.com" --domains="img.wangenpei.com" --http --http.port :8090 run
+
+证书目录：/etc/nginx/.lego/accounts
+	 /etc/nginx/.lego/accounts/acme-v02.api.letsencrypt.org/18868804482@163.com
+../usr/bin
+
+cd /root/lego
+touch cert-renwew.sh
+vi cert-renwew.sh
+
+二：添加脚本内容
+     cd /etc/nginx  
+     lego --email="18868804482@163.com" --domains="admin.wangenpei.com" --domains="pc.wangenpei.com" --domains="mini.wangenpei.com" --http --http.port :8090 renew
+     /usr/sbin/nginx -s reload
+ 三：添加可执行性权限
+    chmod u+x cert-renwew.sh  //增加可执行权限
+ 四：可以先试运行一下脚本看看有没有生成相应的压缩包
+    ./cert-renwew.sh
+ 五：创建定时任务
+    crontab -e #修改 crontab 文件，如果文件不存在会自动创建。 
+    0 4 * * 3 /bin/bash -x /root/lego/cert-renwew.sh >/dev/null 2>&1
+ 六：重启定时任务
+    service crond restart （忘了这步要不要了，反正执行一下不吃亏）

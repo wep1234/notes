@@ -1,0 +1,54 @@
+https证书制作
+
+@since 2018-01-04 pzp
+
+域名实例
+  mster.ses.em
+  O:组织
+  OU:单位
+  CN:唯一标识名字
+  
+  server证书  OU 要和服务器域名保持一致  DNS 也要保持一致
+
+#生成ca证书
+openssl genrsa -out D:\idea\maihe\xinhuazj\caddy\ca.key 2048
+# ca证书（所有用户使用，包括nginx、client）
+openssl req -config openssl.cnf -new -x509 -days 3650 -key D:\idea\maihe\xinhuazj\caddy\ca.key -out D:\idea\maihe\xinhuazj\caddy\ca.crt -subj "/C=CN/ST=Zhejiang/L=Hangzhou/O=ses.em/OU=ses.em/CN=ses.em"
+
+#生成server证书 caddy.pzp.org（nginx使用）
+openssl genrsa -out D:\idea\maihe\xinhuazj\caddy\server2.key 2048
+# 1. 证书请求
+openssl req -config openssl.cnf -new -key D:\idea\maihe\xinhuazj\caddy\server2.key -out D:\idea\maihe\xinhuazj\caddy\server2.csr -subj "/C=CN/ST=Zhejiang/L=Hangzhou/O=ses.em/OU=mster.ses.em/CN=server.ses.em"
+# 2. 签发证书（nginx使用）
+#1. chrome58后在extfile中需设置subjectAltName证书才有效
+#2. firefox使用自己的证书管理器，需手动把ca证书添加到受信任的ca机构列表
+openssl ca -config openssl.cnf -extfile openssl.ext.cnf -in D:\idea\maihe\xinhuazj\caddy\server2.csr -out D:\idea\maihe\xinhuazj\caddy\server2.crt -cert D:\idea\maihe\xinhuazj\caddy\ca.crt -keyfile D:\idea\maihe\xinhuazj\caddy\ca.key
+
+openssl ca -config openssl.cnf -revoke D:/桌面/svn文档/xinhuaca/ca/newcerts/09.pem -cert D:\idea\maihe\xinhuazj\caddy\ca.crt -keyfile D:\idea\maihe\xinhuazj\caddy\ca.key
+
+
+openssl genrsa -out D:\idea\maihe\xinhuazj\caddy\server3.key 2048
+openssl req -config openssl.cnf -new -key D:\idea\maihe\xinhuazj\caddy\server3.key -out D:\idea\maihe\xinhuazj\caddy\server3.csr -subj "/C=CN/ST=Zhejiang/L=Hangzhou/O=ses.em/OU=admin.ses.em/CN=server.ses.em"
+openssl ca -config openssl.cnf -extfile openssl.ext.cnf -in D:\idea\maihe\xinhuazj\caddy\server3.csr -out D:\idea\maihe\xinhuazj\caddy\server3.crt -cert D:\idea\maihe\xinhuazj\caddy\ca.crt -keyfile D:\idea\maihe\xinhuazj\caddy\ca.key
+
+#生成client证书
+# client admin
+# 1. 生成client私钥
+openssl genrsa -out D:\idea\maihe\xinhuazj\caddy\client-admin.key 2048
+# 2. 生成client证书请求
+openssl req -config openssl.cnf -new -key D:\idea\maihe\xinhuazj\caddy\client-admin.key -out D:\idea\maihe\xinhuazj\caddy\client-admin.csr -subj "/C=CN/ST=Zhejiang/L=Hangzhou/O=ses.em/OU=ses.em/CN=admin.ses.em"
+# 3. 使用ca签发证书
+openssl ca -config openssl.cnf -extfile openssl.ext.cnf -in D:\idea\maihe\xinhuazj\caddy\client-admin.csr -out D:\idea\maihe\xinhuazj\caddy\client-admin.crt -cert D:\idea\maihe\xinhuazj\caddy\ca.crt -keyfile D:\idea\maihe\xinhuazj\caddy\ca.key
+# 4. 生成client pkcs12证书（个人导入证书库使用）
+openssl pkcs12 -export -clcerts -in D:\idea\maihe\xinhuazj\caddy\client-admin.crt -inkey D:\idea\maihe\xinhuazj\caddy\client-admin.key -out D:\idea\maihe\xinhuazj\caddy\client-admin.p12
+Enter Export Password: ********   xhadmi
+
+
+1导出客户端证书 (导入个人证书)，本地安装ca.crt  存储到受信任的根证书颁发机构
+
+
+nginx.exe -s stop                   //停止nginx
+
+nginx.exe -s reload                //重新加载nginx
+
+nginx.exe -s quit                     //退出nginx
