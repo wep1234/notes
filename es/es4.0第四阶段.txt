@@ -1,0 +1,326 @@
+1.0 Bucket&Metric聚合分析及嵌套聚合
+    Bucket & Metric Aggregation
+        Metric - 一些系列的统计方法 count，sum，avg，max，min等
+	Bucket - 一组满足条件的文档 Group by brand
+    Aggregation的语法
+    Aggregation属于Search一部分，一般情况下，将size指定为0
+        POST employees/_search
+	{
+	  "size": 0, 
+	  "aggs": {  --和query同级的关键字
+	    "max_salary": { -- 自定义的聚合名字
+	      "max": { -- 聚合的定义
+		"field":"salary"
+	      }
+	    },
+	    "max_salary": {--可以包含多个同级的聚合查询
+	      "max": {
+		"field":"salary"
+	      }
+	    }
+	  }
+	}
+   Metric Aggregation
+      单值分析：只输出一个分析结果，min,max,avg,sum,Cardinality(类似distinct Count)
+      多值分析：输出多个分析结果，stats,extended stats,percentile,percentile rank,top hits(排在前面的示例)	
+
+   Bucket：
+      按照一定的规则，将文档分配到不同的桶中，从而达到分类的目的，es提供的一些常见的Bucket Aggregation
+		terms，数字类型 Range/Data Range  Histogram/Date Histogram
+      支持嵌套：也就在桶里再做分桶
+   Terms Aggregation
+      字段需要打开fielddata，才能进行Terms Aggregation：keyword默认支持doc_values，Text需要在Mapping中enable，会按照分词后的结果进行分桶
+   Cardinality：类似SQL中的Distinct
+   优化Terms聚合的性能。设置eager_global_ordinals为true
+   Range&Histogram聚合
+      按照数字的范围，进行分桶，在Range Aggregation中，可以自定义Key
+   Bucket + Metric Aggregation
+      Bucket聚合分析允许通过添加子聚合分析来进一步分析，子聚合分析可以是Bucket，metric
+
+1.1 Pipeline 聚合分析
+	Pipeline：
+	    管道的概念：支持对聚合分析的结果，再次进行聚合分析
+	    Pipeline的分析结果会输出到原结果中，根据位置的不同，分为两类
+	    	Sibling - 结果和现有分析结果同级：
+			Max,min,Avg&Sum Bucket
+			Stats,Extended Status Bucket
+			Percentiles Bucket
+		Parent - 结果内嵌到现有的聚合分析结果之中
+			Derivative(求导)
+			Cumultive Sum(累计求和)
+			Moving Function(滑动窗口)
+	Sibling pipeline demo
+	    对不同类型工作的，平均工资，求最大，平均，统计信息，百分位数
+	Parent Pipeline的demo
+	    年龄直方图划分的平均工资，Clumulative Sum/Moving Function
+
+1.2 聚合的作用范围及排序
+	聚合的作用范围：
+	    默认作用范围是query的查询结果集
+	    支持一下方式改变聚合的作用范围 Filter/Post_Filter/Global
+	    Filter：只对当前的子聚合语句生效
+	    Post_Filter 是对聚合分析后的文档进行再次过滤，Size无需设置为0，使用场景：一条语句获取聚合信息+获取符合条件的文档
+	    Global: 无视query，对全部文档进行统计
+	排序：
+	    指定order，按照count和key进行排序
+	        默认情况，按照count降序排序
+		指定size，就能返回相应的桶
+	基于子聚合的值排序
+	    基于子聚合的数值进行排序
+	    使用子聚合，Aggregation name
+
+1.3 聚合的精准度问题
+	分布式系统的近似统计算法
+		数据量，精确度，实时性 只能同时满足两条 数据量/精确度 Hadoop离线计算  精确度/实时性 有限数据计算
+		实时性/数据量 近似计算
+	Terms Aggreation的返回值
+	     有两个特殊的数值
+	         doc_count_error_upper_bound:被遗漏的term分桶，包含的文档，有可能的最大值
+		 sum_other_doc_count:除了返回结果bucket的terms以外，其他terms的文档总数(总数-返回的总数)
+	如何解Terms不准的问题：提升shard_size的参数
+	    terms聚合分析不准的原因，数据分散在多个分片上，Coordinatng Node无法获取数据全貌
+	    解决方案1：当数据量不大时，设置Primary Shard为1，实现准确性
+	    方案2：在分布式数据上，设置shard_size参数，提高精确度：原理。每次从shard上额外多获取数据，提升准确率
+	打开show_term_doc_count_error
+	shard_size 设定
+	    调整shard size大小，降低doc_count_error_upper_bound来提升准确度：增加整体计算量，提高了准确度，但会降低相应时间
+	    shard Size 默认代销设定 shard size = size*1.5+10
+
+1.4 对象及Nested对象
+	es处理关联关系：
+	    关系型数据库，一般会考虑Normalize数据，es中，往往考虑Denormalize数据，采用Denormalize好处：读的速度变快/无需表连接/无需行锁
+	    es不擅长处理关联关系，一般采用以下四种方式处理关联
+	        对象类型
+		嵌套对象（Nested Object）
+		父子关联关系（Parent/Child）
+		应用端关联
+	包含对象数组的文档进行一般搜索时会搜到不需要的结果？
+	    es在存储时，内部对象的边界并没有考虑在内。Json格式被处理成扁平式键值对的结构    title:"Speed"
+	    当对多个字段进行查询时，导致了意外的搜索结果				    actor.first_name:["Keanu","Dennis"]
+	    可以用Nested Data Type解决这个问题						    actor.last_name: ["Reeves,"Hopper"]
+	Nested Data Type
+	    Nested数据类型，允许对象数组中的对象被独立索引
+	    使用nested和properties关键字，将索引actors索引到多个分隔的文档
+	    在内部，nested文档会被保存在两个Lucene文档中，在查询中做Join处理
+	嵌套查询
+	    在内部，nested文档会被保存在两个Lucene文档中，会在查询时做Join处理
+
+1.5 文档的父子关系
+	Parent/Child
+	    对象和Nested对象的局限性：每次更新，需要重新索引整个对象（包括根对象和嵌套对象）
+	    es提供了类似关系型数据库中Join的实现，使用Join数据类型实现，可以通过维护Parent/Child的关系，从而分离两个对象
+	        父文档和子文档是两个独立的文档
+		更新父文档无需重新索引子文档，子文档被添加，更新或者删除也不会影响到父文档和其他的子文档
+	父子关系
+	    定义父子关系的几个步骤
+	        1.设置索引的mapping，知名join类型，Parent名称，声明Parent/Child关系，Child名称
+		2.索引父文档，指定父文档id，申明文档的类型
+		3.索引子文档，指定子文档id，指定routing，确保和父文档索引到相同的分片，指定父文档id
+		4.按需查询文档
+	Parent/Child所支持的查询
+	    查询所有文档，
+	    Parent Id查询，返回所有相关子文档，通过对父文档id进行查询，返回所有相关子文档
+	    Has Child查询，返回父文档，通过对子文档进行查询，返回具有相关子文档的父文档，父子文档在相同的分片上，因此join效率高
+	    Has Parent查询，返回相关的子文档，通过对父文档进行查询，返回所有相关子文档
+	访问子文档，需指定父文档routing参数
+	更新子文档，更新子文档不会影响到父文档
+	嵌套对象v.s父子文档
+		  Nested Object                         Parent/Child
+         优点：   文档存储在一起，读取性能高             父子文档可以独立更新
+	 缺点：   更新嵌套的子文档时，需要更新整个文档   需要额外的内存维护关系，读取性能相对差
+	 适用场景 子文档偶尔更新，以查询为主             子文档更新频繁
+
+1.6 Update By Query & Reindex Api
+	使用场景：
+	    一般在以下几种情况时，需要重建索引
+	        索引的Mappings发生变更：字段类型更改，分词器及字典更新
+		索引的Settings发生变更：索引的主分片数发生改变
+		集群内，集群间需要做数据迁移
+	    es内置提供的api
+	        update by query：在现有索引上重建
+		reindex：在其他索引上重建索引
+	Reindex Api：支持把文档从一个索引拷贝到另外一个索引，使用场景：修改索引的主分片数，改变字段的Mapping中的字段类型，集群内数据迁移/跨集群的数据迁移
+		_reindex只会创建不存在的文档，文档如果已经存在，会导致版本冲突
+	跨集群reindex，需要修改elasticsearch.yml，并且重启节点
+	查看Task Api GET _tasks?detailed=true&actions=*reindex
+
+1.7 Ingest Pipeline 与 Painless Script
+	Ingest Node
+	    es5.0 后，引入的一种新的节点类型，默认配置下，每个节点都是Ingest Node
+	         具有预处理数据的能力，可拦截Index或Bulk Api的请求
+		 对数据进行转换，并重新返回给Index或Bulk Api
+	    无需Logstatsh，就可以进行数据的预处理，例如：
+	         为某个字段设置默认值，重命名某个字段的字段名，对字段值进行Split操作
+		 支持设置Painless脚本，对数据进行更加复杂的加工
+	Pipeline&Processor
+	    Pipline&-管道会对通过的数据（文档），按照顺序进行加工
+	    Pricessor-Es对一些加工的行为进行了抽象包装：
+	         es有很多内置的Processor，也支持通过插件的方式，实现自己的Processor
+	使用Pipeline切分字符串
+	Pipeline API
+	Action      Sample
+	添加或更新  Put _ingest/pipeline/my-pipeline-id
+		    {
+		    	"description":"describe pipeline",
+			"processors":[
+			 {
+			  "set":{
+			    "field":"foo",
+			    "value":"bar"
+			  }
+			 }
+			]
+		    }
+        获取       GET _ingest/pipeline/my-pipeline-id
+	删除       DELETE _ingest/pipeline/my-pipeline-id
+
+        一些内置Processors https://www.elastic.co/guide/en/elasticsearch/reference/7.1/ingest-processors.html
+	    Spilt Processor(例：将给定字段值分成一个数组)
+	    Remove/Rename Processor(例：移除一个重命名字段)
+	    Append(例：为商品增加一个新的标签)
+	    Convert（例：将商品价格，从字符串转换成float类型）
+	    Date/JSON(例：日期格式转换。字符串转JSON对象)
+	    Date Index Name Processor(例：将通过该处理器的文档，分配到指定时间格式的索引中)
+	    Fail Processor(一旦出现异常，该pipeline指定的错误信息能返回给用户)
+	    Foreach Processor(数组字段，数组的每个元素都会使用到一个相同的处理器)
+	    Grok Processor(日志的日期格式切割)
+	    Gsub/Join/Split(字符串替换/数组转字符串/字符串转数组)
+	    Lowercase/Upcase(大小写转换)
+	Ingest Node v.s Logstash
+	                 Logstash                 Ingest Node
+        数据输入与输出  支持从不同的数据源读取， 支持从es Rest api获取数据，并且写入es
+			并写入不同的数据源
+	数据缓冲        实现了简单的数据队列，   不支持缓冲
+			支持重写
+	数据处理        支持大量的插件，也支持   内置的插件，可以开发Plugin进行扩展（Plugin更新需要重启）
+			定制开发
+	配置和使用	增加了一定的架构复杂度	 无需额外部署
+
+	Painless简介
+	    es5.x后引入，专门为es设计，扩展了java语法
+	    6.0开始，es只支持Painless。Groovy，JavaScript 和Python都不再支持
+	    Painless支持所有Java的数据类型及Java API子集
+	    Painless Script具备以下特性
+	    	高性能/安全
+		支持显示类型或者动态定义类型
+	Painless的用途
+	    可以对文档字段进行加工处理
+	        更新或删除字段，处理数据聚合操作
+		Script Field：对返回的字段提前进行计算
+		Function Score：对文档的算分进行处理
+	    在Ingest Pipeline中执行脚本
+	    在Reindex API，Update By Query时，对数据进行处理
+	通过Painless脚本访问字段
+	    上下文                语法
+	    Ingestion           ctx.field_name
+	    Update              ctx.source.field_name
+	    Search&Aggregation  doc["field_name"]
+	脚本缓存
+	   参数                           说明
+	   script.cache.max_size         设置最大缓存数
+	   script.cache.expire		 设置缓存超时
+	   script.max_compilations_rate  默认5分钟最多75次编译（75/5m）
+	   编译的开销相较大
+	   es会将脚本编译后缓存在Cache中
+	       lnile scripts和Stored Scripts都会被缓存
+	       默认缓存100个脚本
+1.8 es数据建模实例
+	数据建模，是创建数据模型的过程
+	    数据模型是对真实世界进行抽象描述的一种工具和方法，实现对现实世界的映射。博客/作者/用户评论
+	三个过程：概念模型->逻辑模型->数据模型（第三范式）
+	    数据模型：结合具体的数据库，在满足业务读写性能等需求的前提下，确定最终的定义
+	数据建模：功能需求+性能需求
+	    逻辑模型（数据需求）：实体属性，实体之间的关系，搜索相关的配置
+	    物理模型（性能需求）：
+		索引模板：分片数量
+		索引Mapping：字段配置，关系处理
+	如何对字段进行建模
+		字段类型-》是否要搜索及分词-》是否要聚合及排序-》是否要额外的存储
+	字段类型;Text v.s Keyword
+	    Text:用于全文本字段，文本会被Analyzer分词；默认不支持聚合分析及排序，需要设置fielddata为true
+	    Keyword：用于id，枚举及不需要分词的文本。如电话号码，eamil地址，手机号码，邮政编码，性别等
+	             适用于Filter（精确匹配），Sorting和Aggregations
+	    设置多字段类型：默认会为文本类型设置成text，并且设置一个keyword的子字段；在处理人类语言时，通过增加“英文”，
+			    “拼音”和“标准分词器”，提高搜索结构
+	字段类型：结构化数据
+	    数组类型：尽量选择贴近的类型，例如可以用byte，就不要用long
+	    枚举类型：设置为keyword，即便是数字，也应该设置成keyword，获取更加好的性能
+	    其他：日期/布尔/地理信息
+	检索
+	    如不需要检索，排序和聚合分析：Enable设置成false
+	    如不需要检索：index设置成false
+	    对需要检索的字段，可以通过如下配置，设定存储粒度
+	    	index_options/Norms：不需要归一化数据时，可以关闭
+	聚合及排序
+	    如不需要检索，排序和聚合分析：Enable设置成false
+	    如不需要排序或者聚合分析功能：Doc_values/fielddata设置成false
+	    更新频繁，聚合查询频繁的keyword类型的字段：推荐将eager_global_ordinals设置为true
+	额外的存储
+	    是否需要专门存储当前字段数据：Store设置成true，可以存储该字段的原始内容
+	    				  一般结合_source的enabled为false时候使用
+	    Disable _source：节约磁盘；适用于指标型数据：一般建议先考虑增加压缩比
+	    			       无法看到_source字段，无法做Reindex，无法做Update
+				       Kibana中无法做discovery
+	一个数据建模的实例
+	    图书的索引：书名，简介，作者，发行日期，图书封面
+	    优先字段设定：
+		图书的索引：
+		    书名：支持全文和精确匹配
+		    简介：支持全文
+		    作者：精确值
+		    发行日期：日期类型
+		    图书封面：精确值
+	Mapping字段的相关设置：https://www.elastic.co/guide/en/elasticsearch/reference/current/mapping-params.html
+	    Enabled -设置成false，仅做存储，不支持搜索和聚合分析（数据保存在_source中）
+	    Index - 是否构倒排索引，设置成false，无法被搜索，但还是支持aggregation，并出现在_source中
+	    Norms - 如果字段用来过滤和聚合分析，可以关闭，节约存储
+	    Doc_values - 是否启用doc_values,用于排序和聚合分析
+	    Field_data - 如果要对text类型启用排序和聚合分析，fielddata需要设置成true
+	    Store - 默认不存储，数据默认存储在_source
+	    Coerce -默认开启，是否开启数据类型的自动转换（例如，字符串转数字）
+	    Multifields多字段特性
+	    Dynamic - true/false/strict控制Mapping的自动更新
+	一些相关的API
+	    Index Template&Dynamic Template
+	        根据索引的名字匹配不同的Mappings和Settings
+		可以在一个Mapping上动态的设定字段类型
+	    Index Alias：无需停机，无需修改程序，即可进行修改
+	    Update By Query & Reindex
+
+1.9 es数据建模最佳实践
+	建模建议（一）：如何处理关联关系
+	    Object（优先考虑Denormalization）-》Nested（当数据包含多数值对象（多个演员），同时又查询需求）-》Child/Parent(关联文档更新非常频繁时)
+	    Kibana：Kibana目前暂不支持nested类型和parent/child类型，在未来有可能会支持
+	    	    如果需要使用Kibana进行数据分析，在数据建模时仍需对嵌套和父子关联类型作出取舍
+	建模建议（二）：避免过多字段
+	    一个文档中，最好避免大量的字段
+	    	过多的字段数不容易维护
+		Mapping信息保存在Cluster State中，数据量过大，对集群性能会有影响（Cluster State信息需要和所有的节点同步）
+		删除或者修改数据需要reindex
+	   默认最大字段数是1000，可以设置index.mapping.total_fields.limit限定最大字段数
+	   什么原因会导致文档中有成百上千的字段
+	Dynamic v.s Strict
+	   Dynamic(生产环境中，尽量不要打开Dynamic)
+	       true - 未知字段会被自动加入
+	       false - 新字段不会被索引，但是会保存在_source
+	       strict - 新增字段不会被索引，文档写入失败
+	   Strict
+	       可以控制到字段级别
+	通过Nested对象保存key/value的一些不足
+	    可以减少字段数量，解决Cluster State中保存过多Meta信息的问题，但是导致查询语句复杂度增加，Nested对象，不利于在kibana中实现可视化分析
+	建模建议（三）：避免正则查询
+	    问题：正则，通配符查询，前缀查询属于term查询，但是性能不够好；特别是将通配符放在开头，会导致性能的灾难
+	建模建议（四）：避免空值引起的聚合不准
+	    使用Null_Value解决空值的问题
+	建模建议（五）：为索引的Mapping加入Meta信息
+	    Mappings设置非常重要，需要从两个维度进行考虑：
+	    	功能：搜索，聚合，排序
+		性能：存储的开销；内存的开销；搜索的性能
+	    Mappings设置是一个迭代的过程
+	    	加入新的字段很容易（必要时需要update_by_query)
+		更新删除字段不允许（需要Reindex重建数据）
+		最好能对Mappings加入Meta信息，更好的进行版本管理
+		可以考虑将Mapping文件上传git进行管理
+	 
+
+	    	

@@ -1,0 +1,236 @@
+#Request Body 与 Query DSL
+#ignore_unavailab=true，可以忽略尝试访问不存在的索引“404_idx”导致的报错
+#查询movies分页
+POST /movies,404_idx/_search?ignore_unavailable=true
+{
+  "profile": true,
+  "query": {
+	"match_all": {}
+  }
+}
+
+#分页查找 from从第几个开始 size取得数量
+POST kibana_sample_data_ecommerce/_search
+{
+  "from": 10, 
+  "size": 5,
+  "query": {
+    "match_all": {}
+  }
+}
+
+#对日期排序
+POST kibana_sample_data_ecommerce/_search
+{
+  "sort": [{ "order_date": {"order": "desc"}}],
+  "query":{
+    "match_all": {}
+  }
+}
+
+#结果里只包含source里的字段
+POST kibana_sample_data_ecommerce/_search
+{
+   "_source":["order_date"],
+  "query":{
+    "match_all": {}
+  }
+}
+
+#使用脚本字段	lang: 指定脚本语言， 默认是 painless.
+#source, id: 指定脚本代码 或 使用存储的脚本id（见 Stored script）
+#params: 指定参数作为脚本执行的变量
+#"script": {
+#   "lang":   "...",  
+#   "source" | "id": "...", 
+#   "params": { ... } #  }
+POST kibana_sample_data_ecommerce/_search
+{
+  "script_fields": {
+    "newDate": {
+      "script": {
+        "lang": "painless",
+        "source": "doc['order_date'].value + 'wep'"
+      }
+    }
+  }
+}
+
+#title contains Last or Christmas
+POST movies/_search
+{
+  "query": {
+    "match": {
+      "title": "Last Christmas"
+    }
+  }
+}
+
+#title contains Who and Christmas
+POST movies/_search
+{
+  "query": {
+    "match": {
+      "title": {
+        "query": "Who Christmas",
+        "operator": "and"
+      }
+    }
+  }
+}
+
+#search title contains "one love"
+POST movies/_search
+{
+  "query": {
+    "match_phrase": {
+      "title": {
+        "query": "one love"
+      }
+    }
+  }
+}
+
+#slop:n 表示 contains 的单词允许有n个不一样
+POST movies/_search
+{
+  "query": {
+    "match_phrase": {
+      "title": {
+        "query": "Doctor Christmas",
+        "slop": 3
+      }
+    }
+  }
+}
+
+GET /users/_doc/1
+
+PUT /users/_doc/1
+{
+  "name":"wang en pei",
+  "about": "java elasticsearch mysql"
+}
+
+put /users/_doc/2
+{
+  "name":"wang xi zhi",
+  "about":"paint"
+}
+
+#query_string 
+POST /users/_search
+{
+  "query": {
+    "query_string": {
+      "default_field":  "name",
+      "query": "wang or zhi"
+    }
+  }
+}
+
+#AND OR 大写
+POST /users/_search
+{
+  "query": {
+    "query_string": {
+      "fields": ["name","about"],
+      "query":"(wang OR zhi) OR (paint)"
+    }
+  }
+}
+
+#Simple Query 默认的operator是 Or，可以指定operator ,忽略错误语法，不支持AND,OR,NOT会当成字符串处理，支持部分逻辑 +替代AND,|替代OR,-替代NOT
+
+# query 表示 name contains (wang or and or pei)
+POST /users/_search
+{
+  "query": {
+    "simple_query_string": {
+      "query": "wang AND pei",
+      "fields": ["name"]
+    }
+  }
+}
+
+# query 表示 name contains (wang pei)
+POST /users/_search
+{
+  "query": {
+    "simple_query_string": {
+      "query": "wang + pei",
+      "fields": ["name"]
+    }
+  }
+}
+
+#query 表示 不包含 en
+POST /users/_search
+{
+  "query": {
+    "simple_query_string": {
+      "query": "-en",
+      "fields": ["name"]
+    }
+  }
+}
+
+#query 表示contains wang and not contians pei
+POST /users/_search
+{
+  "query": {
+    "simple_query_string": {
+      "query": "wang -pei",
+      "fields": ["name"],
+      "default_operator": "AND"
+    }
+  }
+}
+
+POST /users/_search
+{
+  "query": {
+    "simple_query_string": {
+      "query": "wang pei",
+      "fields": ["name"],
+      "default_operator": "OR"
+    }
+  }
+}
+
+GET /movies/_search
+{
+	"profile": true,
+	"query":{
+		"query_string":{
+			"default_field": "title",
+			"query": "Beafiful AND Mind"
+		}
+	}
+}
+
+# 多fields
+GET /movies/_search
+{
+	"profile": true,
+	"query":{
+		"query_string":{
+			"fields":[
+				"title",
+				"year"
+			],
+			"query": "2012"
+		}
+	}
+}
+
+GET /movies/_search
+{
+	"profile":true,
+	"query":{
+		"simple_query_string":{
+			"query":"Beautiful +mind",
+			"fields":["title"]
+		}
+	}
+}

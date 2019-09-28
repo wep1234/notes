@@ -1,0 +1,133 @@
+es命令
+集群健康 'localhost:9200/_cat/health?v'
+查询节点 'localhost:9200/_cat/nodes?v'
+所有索引 'localhost:9200/_cat/indices?v'
+//查看集群健康
+GET _cluster/health
+创建索引（pretty参数表示返回结果格式美观） curl -XPUT 'localhost:9200/customer?pretty'
+删除索引 curl -XDELETE 'localhost:9200/customer/?pretty' 
+cd /d D:\elasticSearch\elasticsearch-7.2.0\bin
+elasticsearch.bat
+elasticsearch.bat -E node.name=node0 -E cluster.name=geektime -E path.data=node0_data
+elasticsearch.bat -E node.name=node1 -E cluster.name=geektime -E path.data=node1_data
+elasticsearch.bat -E node.name=node2 -E cluster.name=geektime -E path.data=node2_data
+elasticsearch.bat -E node.name=node3 -E cluster.name=geektime -E path.data=node3_data
+
+生产环境建议一台机器运行一个es实例，即一个节点
+
+Document API
+https://www.elastic.co/guide/en/elasticsearch/reference/7.1/docs.html
+
+正排索引：文档id到文档内容和单词的关联
+倒排索引（es使用）：单词到文档id的关联    https://www.elastic.co/guide/cn/elasticsearch/guide/current/inverted-index.html
+  1：单词词典（Term Dictionary）记录所有文档的单词，记录单词到倒数列表的关联关系，一般比较大，可以通过B+树或哈希拉链法实现，以满足高性能的插入与查询
+  2：倒排列表（Posting List）记录了单词对应的文档结合，由倒排索引项组成
+      倒排索引项：
+	文档id
+	词频TF - 该单词在文档中出现的次数，用于相关性评分
+	位置（Position）单词在文档中分词的位置。用于语句搜索
+	偏移（Offset）记录单词的开始结束位置，实现高亮显示
+
+#Simple Analyzer – 按照非字母切分（符号被过滤），小写处理
+#Stop Analyzer – 小写处理，停用词过滤（the，a，is）
+#Whitespace Analyzer – 按照空格切分，不转小写
+#Keyword Analyzer – 不分词，直接将输入当作输出
+#Patter Analyzer – 正则表达式，默认 \W+ (非字符分隔)
+#Language – 提供了30多种常见语言的分词器
+#2 running Quick brown-foxes leap over lazy dogs in the summer evening
+
+
+kibana （5601）
+  Dev Tool（执行elasticSerach API）
+    Ctrl/Cmd + I
+    Auto indent current request
+
+    Ctrl/Cmd + /
+    Open documentation for current request
+
+    Ctrl + Space
+    Open Auto complete (even if not typing)
+
+   Ctrl/Cmd + Enter
+   Submit request
+
+   Ctrl/Cmd + Up/Down
+   Jump to the previous/next request start or end.
+
+   Ctrl/Cmd + Alt + L
+   Collapse/expand current scope.
+
+  Ctrl/Cmd + Option + 0
+  Collapse all scopes but the current one. Expand by adding a shift.
+
+  Down arrow
+  Switch focus to auto-complete menu. Use arrows to further select a term
+
+  Enter/Tab
+  Select the currently selected or the top most term in auto-complete menu
+
+  Esc
+  Close auto-complete menu
+    
+
+logstash（开源数据引擎，集中、转换和存储你的数据）:
+  bin目录下可以配置 logstash.conf
+  cd /d D:\logstash\logstash-7.2.0\bin
+  cd bin目录下  .\logstash.bat -f logstash.conf  (导入测试数据)
+  --node.name NAME
+　　 指定Logstash实例的名字。如果没有指定的话，默认是当前主机名。
+  -f, --path.config CONFIG_PATH
+     从指定的文件或者目录加载Logstash配置。如果给定的是一个目录，则该目录中的所有文件将以字典顺序连接，然后作为一个配置文件进行解析。
+   -e, --config.string CONFIG_STRING
+     用给定的字符串作为配置数据，语法和配置文件中是一样的。
+   --modules
+     运行的模块名字
+   -l, --path.logs PATH
+ Logstash内部日志输出目录
+   --log.level LEVEL
+    日志级别
+   -t, --config.test_and_exit
+    检查配置语法是否正确并退出
+   -r, --config.reload.automatic
+    监视配置文件的改变，并且当配置文件被修改以后自动重新加载配置文件。
+   -config.reload.interval RELOAD_INTERVAL
+    为了检查配置文件是否改变，而拉去配置文件的频率。默认3秒。
+   --http.host HTTP_HOST
+    Web API绑定的主机。REST端点绑定的地址。默认是"127.0.0.1"
+   --http.port HTTP_PORT
+    Web API http端口。REST端点绑定的端口。默认是9600-9700之间。
+   --log.format FORMAT
+    指定Logstash写它自身的使用JSON格式还是文本格式。默认是"plain"。
+   --path.settings SETTINGS_DIR
+    设置包含logstash.yml配置文件的目录，比如log4j日志配置。也可以设置LS_SETTINGS_DIR环境变量。默认的配置目录是在Logstash home目录下。
+   -h, --help
+    打印帮助
+
+http://localhost:9000 
+
+~1 允许一个字母不一样
+GET /movies/_search?q=title:beautifl~1
+{
+"profile":"true"
+}
+GET /movies/_search?q=title:"Lord Rings"~2  ""里面允许中间多2个单词
+{
+"profile":"true"
+}
+
+ES自定义分词
+ 当es自带的分词器无法满足需求时，可以自定义分词器，通过组合不同的组件实现
+ # Character Filters
+ # Tokenizer
+ # Token Filters
+
+Character Filters
+ 在Tokenizer（分词）前对文本进行处理，如增加删除及替换字符，可以配置多个Character Filter。会影响Tokenizer的position和offset信息
+ 自带Character Filters：HTML_strip - 去除html标签/Mapping -字符串替换/Pattern replace-正则匹配替换
+Tokenizer
+ 将文本按照一定规则切分为词
+ 内置Tokenizer：whitespaces/standard/uax_url_email/pattern/keyword/path hierarchy
+ 可以用java开发插件，实现紫的的Tokenizer
+Token Filters
+ 将Tokenizer输出的单词（term），进行增加，修改，删除
+ 自带的Token Filters：Lowercase/stop/synonym(添加近义词)

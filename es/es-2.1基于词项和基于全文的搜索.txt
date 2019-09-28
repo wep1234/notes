@@ -1,0 +1,150 @@
+ 基于词项和基于全文的搜索
+ 
+ 词项：
+  基于term的查询，
+        term level query：Term Query/Range Query/Exists Query/Prefix Query/Wildcard Query
+	es中，term查询，对输入不做分词，会将输入作为一个整体，在倒排索引中查找准确的词项，并使用相关度算分公式为每个包含该词项的文档进行相关度算分
+	可通过Constant Score将查询转换成一个Filtering，避免算分，并利用缓存，提高性能
+全文
+ 基于全文的查询
+     Match Query/Match Phrase Query/Query String Query
+     索引和搜索时都会进行分词，查询字符串先传递到一个合适的分词器，然后生成一个供查询的词项列表
+     查询时候，先会对输入的查询进行分词，然后对每个词项逐个进行底层的查询，最终将结果进行合并，并为每个文档生成一个算分。-例如查“Matrix reloaded”，会查到包括
+     Matrix或者reloaded的所有结果
+
+
+#es在没有指定分词器的时候，默认在text使用standard
+DELETE products
+PUT products
+{
+  "settings": {
+    "number_of_shards": 1
+  }
+}
+
+POST /products/_bulk
+{ "index": { "_id": 1 }}
+{ "productID" : "XHDK-A-1293-#fJ3","desc":"iPhone" }
+{ "index": { "_id": 2 }}
+{ "productID" : "KDKE-B-9947-#kL5","desc":"iPad" }
+{ "index": { "_id": 3 }}
+{ "productID" : "JODL-X-1937-#pV7","desc":"MBP" }
+
+GET products/_doc/1
+
+GET /products
+
+#value = "iPhone" 搜索不到 term查询不会分词，查询的是iPhone，但es在做数据索引时会对text内容做默认分词处理
+POST /products/_search
+{
+  "query": {
+    "term": {
+      "desc": {
+        //"value": "iPhone"
+         "value": "iphone"
+      }
+    }
+  }
+}
+
+#value = "XHDK-A-1293-#fJ3" 同上，es在数据索引时text内容默认分词
+POST /products/_search
+{
+  "query": {
+    "term": {
+      "productID": {
+        //"value": "XHDK-A-1293-#fJ3"
+        "value": "xhdk"
+        //"value": "xhdk-a-1293-#fj3"
+      }
+    }
+  }
+}
+
+#若想要完全匹配，按照keyword查询
+POST /products/_search
+{
+  "query": {
+    "term": {
+      "productID.keyword": {
+        //"value": "XHDK-A-1293-#fJ3"
+        //"value": "xhdk"
+        //"value": "xhdk-a-1293-#fj3"
+      }
+    }
+  }
+}
+
+#跳过算分，提高性能
+POST /products/_search
+{
+  "explain": true,
+  "query": {
+    "constant_score": {
+      "filter": {
+        "term": {
+          "productID.keyword": "XHDK-A-1293-#fJ3"
+        }
+      }
+
+    }
+  }
+}
+}
+
+GET _analyze
+{
+  "analyzer": "standard",
+  "text":"XHDK-A-1293-#fJ3"
+}
+
+GET /products/_mapping
+
+#Match Query Result
+POST movies/_search
+{
+  "query": {
+    "match": {
+      "title": "Matrix Reloaded"
+    }
+  }
+}
+
+#Operator
+POST movies/_search
+{
+  "profile": "true", 
+  "query": {
+    "match": {
+      "title": {
+        "query": "Matrix Reloaded",
+        "operator": "and"
+      }
+    }
+  }
+}
+#mininum_should_match 最少满足几个
+POST movies/_search
+{
+  "profile": "true", 
+  "query": {
+    "match": {
+      "title": {
+        "query": "Matrix Reloaded",
+        "minimum_should_match": 2
+      }
+    }
+  }
+}
+#match phrase Query
+POST movies/_search
+{
+  "query": {
+    "match_phrase": {
+      "title": {
+        "query": "Matrix Reloaded",
+        "slop": 1
+      }
+    }
+  }
+}

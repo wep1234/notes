@@ -1,0 +1,54 @@
+GET _cat/plugins
+
+#ik_max_word
+#ik_smart
+#hanlp: hanlp默认分词
+#hanlp_standard: 标准分词
+#hanlp_index: 索引分词
+#hanlp_nlp: NLP分词
+#hanlp_n_short: N-最短路分词
+#hanlp_dijkstra: 最短路分词
+#hanlp_crf: CRF分词（在hanlp 1.6.6已开始废弃）
+#hanlp_speed: 极速词典分词
+
+POST _analyze
+{
+  "analyzer": "hanlp_nlp",
+  "text": ["剑桥分析公司多位高管对卧底记者说，他们确保了唐纳德·特朗普在总统大选中获胜"]
+
+}     
+
+#Pinyin
+PUT /artists/
+{
+    "settings" : {
+        "analysis" : {
+            "analyzer" : {
+                "user_name_analyzer" : {
+                    "tokenizer" : "whitespace",
+                    "filter" : "pinyin_first_letter_and_full_pinyin_filter"
+                }
+            },
+            "filter" : {
+             "pinyin_first_letter_and_full_pinyin_filter" : {
+                    "type" : "pinyin",
+                    "keep_first_letter" : true,
+                    "keep_full_pinyin" : false,
+                    "keep_none_chinese" : true,
+                    "keep_original" : false,
+                    "limit_first_letter_length" : 16,
+                    "lowercase" : true,
+                    "trim_whitespace" : true,
+                    "keep_none_chinese_in_first_letter" : true
+                }
+            }
+        }
+    }
+}
+
+
+GET /artists/_analyze
+{
+  "text": ["刘德华 张学友 郭富城 黎明 四大天王"],
+  "analyzer": "user_name_analyzer"
+}

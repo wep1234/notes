@@ -1,0 +1,274 @@
+1.0 跨集群搜索
+	水平扩展的痛点
+	     单集群-当水平扩展时，节点数不能无限增加。当集群的meta信息（节点，索引，集群状态）过多，会导致更新压力变大，单个Active Master会成为性能瓶颈，导致整个集群无法正常工作
+	     早期版本，通过Tribe Node可以实现多集群访问的需求，但是还存在一定的问题
+	          Tribe Node 会以Client Node的方式加入每个集群，集群中Master节点的任务变更需要Tribe Node的回应才能继续
+		  Tribe Node不保存Cluster State信息。一旦重启，初始化很慢
+		  当多个集群存在索引重名的情况时，只能设置一种Prefer规则
+	跨集群搜索-Cross Cluster Search
+	    早期Tribe Node的方案存在一定问题，已被Deprecated
+	    es5.3引入了跨集群搜索的功能（Cross Cluster Search），推荐使用，允许任何节点扮演federated节点，以轻量的方式，将搜索请求进行代理，不需要以Client Node的形式加入其它集群
+
+//启动3个集群
+
+bin/elasticsearch -E node.name=cluster0node -E cluster.name=cluster0 -E path.data=cluster0_data -E discovery.type=single-node -E http.port=9200 -E transport.port=9300
+bin/elasticsearch -E node.name=cluster1node -E cluster.name=cluster1 -E path.data=cluster1_data -E discovery.type=single-node -E http.port=9201 -E transport.port=9301
+bin/elasticsearch -E node.name=cluster2node -E cluster.name=cluster2 -E path.data=cluster2_data -E discovery.type=single-node -E http.port=9202 -E transport.port=9302
+
+
+//在每个集群上设置动态的设置
+PUT _cluster/settings
+{
+  "persistent": {
+    "cluster": {
+      "remote": {
+        "cluster0": {
+          "seeds": [
+            "127.0.0.1:9300"
+          ],
+          "transport.ping_schedule": "30s"
+        },
+        "cluster1": {
+          "seeds": [
+            "127.0.0.1:9301"
+          ],
+          "transport.compress": true,
+          "skip_unavailable": true
+        },
+        "cluster2": {
+          "seeds": [
+            "127.0.0.1:9302"
+          ]
+        }
+      }
+    }
+  }
+}
+
+ #cURL
+curl -XPUT "http://localhost:9200/_cluster/settings" -H 'Content-Type: application/json' -d'
+{"persistent":{"cluster":{"remote":{"cluster0":{"seeds":["127.0.0.1:9300"],"transport.ping_schedule":"30s"},"cluster1":{"seeds":["127.0.0.1:9301"],"transport.compress":true,"skip_unavailable":true},"cluster2":{"seeds":["127.0.0.1:9302"]}}}}}'
+
+curl -XPUT "http://localhost:9201/_cluster/settings" -H 'Content-Type: application/json' -d'
+{"persistent":{"cluster":{"remote":{"cluster0":{"seeds":["127.0.0.1:9300"],"transport.ping_schedule":"30s"},"cluster1":{"seeds":["127.0.0.1:9301"],"transport.compress":true,"skip_unavailable":true},"cluster2":{"seeds":["127.0.0.1:9302"]}}}}}'
+
+curl -XPUT "http://localhost:9202/_cluster/settings" -H 'Content-Type: application/json' -d'
+{"persistent":{"cluster":{"remote":{"cluster0":{"seeds":["127.0.0.1:9300"],"transport.ping_schedule":"30s"},"cluster1":{"seeds":["127.0.0.1:9301"],"transport.compress":true,"skip_unavailable":true},"cluster2":{"seeds":["127.0.0.1:9302"]}}}}}'
+
+#创建测试数据
+curl -XPOST "http://localhost:9200/users/_doc" -H 'Content-Type: application/json' -d'
+{"name":"user1","age":10}'
+
+curl -XPOST "http://localhost:9201/users/_doc" -H 'Content-Type: application/json' -d'
+{"name":"user2","age":20}'
+
+curl -XPOST "http://localhost:9202/users/_doc" -H 'Content-Type: application/json' -d'
+{"name":"user3","age":30}'
+
+#查询
+GET /users,cluster1:users,cluster2:users/_search
+{
+  "query": {
+    "range": {
+      "age": {
+        "gte": 20,
+        "lte": 40
+      }
+    }
+  }
+}
+
+1.1 集群分布式模型及选主与脑裂问题
+	分布式特性
+	    es的分布式架构带来的好处：
+	    	1:存储的水平扩容，支持PB级数据
+		2:提高系统的可用性，部分节点停止服务，整个集群的服务不受影响
+	    es的分布式架构
+		1:不同的集群通过不同的名字来区分，默认名字“elasticsearch”
+		2:通过配置文件修改，或者在命令行中 -E cluster.name=geektime进行设定
+	节点
+	    节点是一个es的实例，本质上是一个java进程，一台机器上可以运行多个es进程，但是生产环境建议一台机器就运行一个es实例
+	    每个节点都有名字，通过配置文件配置，或者启动时 -E node.name=geektime指定
+	    每个节点在启动之后，会分配一个UID,保存在data目录下
+	Coordinating Node
+	    处理请求的节点，叫Coordinating Node。路由请求到正确的节点，例如创建/删除索引的请求，需要路由到Master节点
+	    所有节点默认都是Coordinating Node
+	    通过将其他节点设置成false，使其成为Dedicated Coordinating Node
+	Data Node
+	    可以保存数据的节点。节点启动后，默认就是数据节点，可以设置node.data:false禁止
+	    Data Node的职责，保存分片数据，在数据扩展上起到了至关重要的作用（由Master Node决定如何把分片分发到数据节点上）
+	    通过增加数据节点，可以解决数据水平扩展和解决数据单点问题
+	Master Node
+	    职责：处理创建，删除索引等请求/决定分片被分片到哪个节点/负责索引的创建与删除；维护并且更新Cluster State
+	    Master Node的最佳实践：master节点非常重要，在部署上需要考虑解决单点的问题，为一个集群设置成多个Master节点/每个节点只承担Master的单一角色
+	Master Eligible Nodes&选主流程
+	    一个集群，支持配置多个Master Eligible节点。这些节点可以在必要时（如Master节点出现故障，网络故障时）参与选主流程，成为Master节点
+	    每个节点启动时，默认就是一个Master Eligible节点，可以设置node.master:false禁止
+	    当集群内第一个Master eligible节点启动时候，它会将自己选举成Master节点
+	集群状态
+	    集群状态信息（Cluster State），维护了一个集群中，必要的信息：所有的节点信息，所有的索引和其相关的Mapping与Setting信息，分片的路由信息
+	    在每个节点上都保存了集群的状态信息
+	    但是，只有Master节点才能修改集群的状态信息，并负责同步给其他节点，因为任意节点都能修改信息会导致Cluster State信息的不一致
+	Master Eligible Nodes&选主的过程
+	    互相Ping对方，Node Id低的会成为被选举的节点
+	    其他节点会加入集群，但是不承担Master节点的角色，一旦发现被选中的主节点丢失，就会选举出新的Master节点
+	脑裂问题
+	    Split-Brain，分布式系统的经典网络问题，当出现网络问题，一个节点和其他节点无法连接（假如目前Node1 Node2 Node3 3个节点，Node1和其他节点无法连接）
+	    	Node2和Node3会重新选举Master
+		Node1自己还是作为Master组成一个集群，同时更新Cluster State
+		导致2个master，维护不同的cluster state，当网络恢复时，无法选择正确恢复
+	如何避免脑裂问题
+	   限定一个选举条件，设置quorum（仲裁），只有在Master eligible节点数大于quorum时，才能进行选举。
+	       Quorum=(master 节点总数/2)+1
+	       当3个master eligible时，设置discovery.zen.minimum_master_nodes为2，即可避免脑裂
+	   从es7.0开始，无需这个配置
+	       移除minimum_master_nodes参数，让es自己选择可以形成仲裁的节点
+	       典型的主节点选举现在只需要很短的时间就可以完成，集群的伸缩变得更安全，更容易，并且可能造成丢失数据的系统配置选项更少了
+	       节点更清楚的记录它们的状态，有助于诊断为什么它们不能加入集群或为什么无法选举出主节点
+	配置节点类型
+	   一个节点默认情况下是一个Master eligible，data node and ingest node
+	   节点类型          配置参数     默认值
+	   master eligible   node.master   true
+	   data              node.data     true
+	   ingest            node.ingest   true
+	   coordinating only 无            设置上面三个参数全部为false
+	   machine learning  node.ml       true（需要enable x-pack）
+
+	   cd /d D:\elasticSearch\elasticsearch-7.2.0\bin
+	   elasticsearch.bat -E node.name=node1 -E cluster.name=geektime -E path.data=node1_data
+	   elasticsearch.bat -E node.name=node2 -E cluster.name=geektime -E path.data=node2_data
+	   elasticsearch.bat -E node.name=node3 -E cluster.name=geektime -E path.data=node3_data
+
+1.2 分片与集群的故障转移
+	Primary Shard - 提升系统存储容量
+	    分片是es分布式存储的基石，主分片/副本分片
+	通过主分片，将数据分布在所有节点上
+	    Primary Shard 可以将一份索引的数据，分散在多个Data Node上，实现存储的水平扩展
+	    主分片（Primary Shard）数在索引创建时候指定，后续默认不能修改，如要修改，需要重建索引
+	Replica Shard - 提高数据可用性
+	    数据可用性
+	        通过引入副本分片（Replica Shard）提高数据的可用性，一旦主分片丢失，副本分片可以在Promote成主分片。副本分片数可以动态调整。每个节点
+		上都有完备的数据，如果不设置副本分片，一旦出现节点硬件故障，就有可能造成数据丢失
+	    提升系统的读取性能
+	    	副本分片由主分片（Primary Shard）同步。通过支持增加Replica个数，一定程度可以提高读取的吞吐量
+	分片数的设定
+	    如何规划一个索引的主分片数和副本分片数
+	        主分片数过小：例如创建了一个Primary Shard的index，如果该索引增长很快，集群无法通过增加节点实现对这个索引的数据扩展
+	        主分片数设置过大：导致单个Shard容量很小，引发一个节点上有过多分片，影响性能
+		副本分片数设置过多，会降低集群整体的写入性能
+	单节点集群，设置索引3个分片，一个副本。会导致副本无法分片，集群状态为黄色，增加一个数据节点，集群状态转为绿色，集群具备故障转移能力，尝试着将Replica
+	设置成2和3，查看集群的状态，再增加一个数据节点，集群具备故障转移能力，Master节点会决定分片分配到哪个节点。通过增加节点，提高集群的计算能力
+	故障转移：3个节点共同组成，包含一个索引，索引设置了3个Primary Shard和1个Replica，节点1是Master节点，节点意外出现故障，集群重新选举Master节点，Node3上的
+	R0提升成P0，集群变黄，R0和R1分配，集群变绿
+
+1.3 文档分布式存储
+        文档存储在分片上
+	     文档会存储在具体的某个主分片和副本分片上：例如文档1，会存储在P0和R0分片上
+	     文档到分片的映射算法
+	         确保文档能均匀分布在所用分片上，充分利用硬件资源，避免部分机器空闲，部分机器繁忙
+		 潜在的算法
+		     随机/Round Robin 当查询文档1，如果分片数很多，需要多次查询才可能查到文档1
+		     维护文档到分片的映射关系，当文档数据量大的时候，维护成本高
+		     实时计算，通过文档1，自动算出，需要去那个分片上获取文档
+	文档到分片的路由算法
+	     shard = hash(_routing)%number_of_primary_shards
+	          hash算法确保文档均匀分散到分片中
+		  默认的_routing值是文档id
+		  可以自行制定routing数值，例如用相同国家的商品，都分配到指定的shard
+		  设置Index Settings后，Primary数，不能随意修改的根本原因
+
+1.4 分片及其生命周期
+	分片的内部原理
+	    什么是es的分片
+	        es中最小的工作单元/是一个lucene的index
+	一些问题：为什么es的搜索是近实时的(1秒后被搜到)，es如何保证在断电时数据也不会丢失，为什么删除文档，并不会立刻释放空间
+	倒排索引不可变性
+	    倒排索引采用Immutable Design，一旦生成，不可更改
+	    不可变性，带来了如下好处
+	         无需考虑并发写文件的问题，避免了锁机制带来的性能问题
+		 一旦读入内核的文件系统缓存，便留在那里，只要文件系统存有足够的空间，大部分请求就会直接请求内存，不会命中磁盘。提升了很大的性能
+		 缓存容易生成和维护/数据可以被压缩
+	    不可变更性，带来了的挑战，如果需要让一个新的文档可以被搜索。需要重建整个索引
+	Lucene Index
+	     在Lucene中，单个倒排索引文件被称为Segment.Segment是自包含的，不可变更的，多个Segments汇总在一起，称为Lucene的Index，对应es中的Shard
+	     当有新文档写入时，会生成新Segment，查询时会同时查询Segments，并且对结果汇总。Lucene中有个文件，记录所有的Segments信息，叫做Commit Point
+	     删除的文档信息，保存在.del文件中
+	什么是Refresh（文档先写入Index Buffer）
+	     将Index buffer写入Segment的过程叫Refresh，Refresh不执行fsync操作
+	     Refresh频率：默认1秒发生一次，可通过index.refresh_interval配置。Refresh后，数据就可以被搜索到
+	     如果系统有大量的数据写入，那就会产生很多的Segment
+	     Index Buffer被占满时，会触发Refresh，默认值是JVM的10%
+	什么是Transaction Log
+	     Segment写入磁盘的过程相对耗时，借助文件系统缓存，Refresh时，先将Segment写入缓存以开放查询
+	     为了保证数据不会丢失，索引在Index文档时，同时写Transaction Log，高版本开始，Transaction Log，默认落盘，每个分片有一个Transaction Log
+	     在es Refresh时，Index Buffer被清空，Transaction log不会清空
+	什么是Flush
+	     Es Flush&Lucene Commit
+	         调用Refresh，Index Buffer清空并且Refresh
+		 调用fsync，将缓存中的Segments写入磁盘
+		 清空（删除）Transaction Log
+		 默认30分钟调用一次
+		 Taransaction Log满（默认512MB）
+	Merge
+	   Segment很多，需要被定期合并：减少Segments/删除已经删除的文档
+	   es和lucene会自动进行Merge操作。手动调用： POST my_index/_forcemerge
+
+1.5 剖析分布式查询及相关性算分
+	分布式搜索的运行机制
+	    es的搜索，会分两阶段进行，第一阶段-Query，第二阶段-Fetch
+	Query-then-Fetch
+	Query阶段：（3个主分片，1个副本）
+	    用户发出搜索请求到es(coordinating节点)节点，节点收到请求，会以coordinating节点的身份，在6个主副分片中随机选取3个分片。发送查询请求，
+	    被选中的分片执行查询，进行排序，然后每个分片都会返回From+Size个排序后的文档Id和排序值给Coordinating节点
+	Fetch阶段
+	    coordinating Node会将Query阶段，从每个分片获取的排序后的文档Id列表，重新进行排序。选取From到From+Size个文档的Id，以multi get请求的方式，到相应的分片获取
+	    详细的文档数据
+	Query-then-Fetch潜在的问题
+	    性能问题
+	        每个分片上需要查的文档个数= from+size，最终协调节点需要处理:number_of_shard*(from+size),深度分页
+	    相关性算分
+	        每个分片都基于自己的分片上的数据进行相关度计算。这会导致打分偏离的情况，特别是数据量很少时，相关性算分在分片已经相互独立，当文档总数很少的情况下，如果主分片
+		大于1，主分片数越多。相关性算分会越不准
+	解决算分不准的方法
+	    当数据量不大的时候，可以将主分片数设置为1，当数据量足够大时候，只要保证文档均匀分散在各个分片上，结果一般就不会出现偏差
+	    使用DFS Query Then Fetch,搜索的url指定参数"_search?search_type=dfs_query_then_fetch"，到每个分片把各分片的词频和文档频率进行收集，然后完整的进行一次相关性算分，耗费
+	    更多的cpu和内存，执行性能低下，一般不建议使用
+
+1.6 排序及Doc Values&Field Data
+	排序：es默认采用相关性算分对结果进行降序排序，可以通过设定sorting参数，自行设定排序，如果不指定_score，算分为Null
+	多字段进行排序：组合多个条件，优先考虑写在前面的排序，支持对相关性算分进行排序
+	对Text类型排序
+	    排序的过程:排序是针对字段原始内容进行的。倒排索引无法发挥作用。需要用到正排索引，通过文档id和字段快速得到字段原始内容
+		       es有2种实现方法：Fielddata;Doc Values(列式存储，对Text类型无效)
+	Doc Values vs Field Data
+		  Doc Values	                  Field Data
+	何时创建  索引时，和倒排索引一起创建      搜索时动态创建
+	创建位置  磁盘文件                         JVM Heap
+	优点      避免大量内存占用                索引速度快，不占用额外的磁盘空间
+	缺点      降低索引速度，占用额外磁盘空间  文档过多时，动态创建开销大，占用过多的JVM Heap
+	缺省值    es 2.x 之后                     es1.x及之前
+		       
+	field data 默认关闭，可以通过mapping设置打开，修改设置后，即时生效，无需重建索引，只支持对text类型字段设定，打开后，可以对text字段进行排序，但是是对分词后的term排序，
+	所以结果往往不满足预期，不建议使用，部分情况下打开，满足一些聚合分析的特定需求
+	doc values 默认启用，可以通过mapping设置关闭（增加索引速度/减少磁盘空间），如果重新打开，需要重建索引，在明确不需要做排序及聚合分析的情况下需要关闭
+	获取doc values & Fielddata中存储的内容：Text类型的不支持doc values，text类型打开fielddata后，可以查看分词后的数据
+
+1.7 分页与遍历 - From,Size,Search After& Scroll API
+	FROM/Size
+	    默认情况下，是按照相关度算分排序，返回前10条记录，From：开始位置 Size期望获取文档的总数
+	分布式系统中深度分页的问题：
+	    es天生就是分布式的，查询信息，但是数据分别保存在多个分片，多台机器上，es天生就要满足排序的需要（按照相关性算分）
+	    当一个查询，From = 990，Size=10
+	        会在每个分片上线都获取1000个文档，然后通过Coordinating Node聚合所有结果。最后再通过排序选取前1000个文档，页数越深，占用内存越多，为了避免深度分页带来的内存开销，
+		es有个设定，默认限定到10000（From+size < 10000）个文档，超出10000，报错
+	Search After避免深度分页
+	    避免深度分页的性能问题，可以实时获取下一页文档信息：不支持指定页面，只能向下翻，第一步搜索需要指定sort，并且保证值是唯一的（可以通过加入_id保证唯一性），然后使用
+	    上一次最后文档的sort值进行查询
+	Search After是如何解决深度分页的
+	    假定Size是10，当查询990-1000，通过唯一排序值定位，将每次要处理的文档树都控制在10
+	Scroll API
+	    创建一个快照，有新的数据写入以后，无法被查到，每次查询后，输入上一次的eSvroll Id
+	不同搜索类型和使用场景
+	    Regular:需要实时获取顶部的部分文档，例如查询最新的订单
+	    Scroll:需要全部文档，例如导出全部数据
+	    Pagination:From和Size，如果需要深度分页，则选用Search After

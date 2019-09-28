@@ -1,0 +1,44 @@
+cd /d D:\dockerCompose\docker-es-instance
+//启动
+docker-compose up
+
+//停止容器
+docker-compose down
+
+//停止容器并且移除数据
+docker-compose down -v
+
+//一些docker 命令
+docker ps
+docker stop Name/ContainerId  停止服务
+docker start Name/ContainerId
+
+删除单个容器
+$docker rm Name/ID
+-f, –force=false; -l, –link=false Remove the specified link and not the underlying container; -v, –volumes=false Remove the volumes associated to the container
+
+删除所有容器
+$docker rm `docker ps -a -q`  
+停止、启动、杀死、重启一个容器
+$docker stop Name/ID  
+$docker start Name/ID  
+$docker kill Name/ID  
+$docker restart name/ID
+
+docker es 安装插件
+进入es的容器并启动bash。 命令 docker exec -it es7_01 bash 注：es7_01 即容器名称
+执行 bin/elasticsearch-plugin install analysis-icu 
+exit 退出bash
+
+docker-compose restart 
+
+docker exec -it es7_02 bash
+
+bin/elasticsearch-plugin install https://github.com/medcl/elasticsearch-analysis-ik/releases/download/v7.1.0/elasticsearch-analysis-ik-7.1.0.zip
+
+#安装插件
+bin/elasticsearch-plugin install https://github.com/medcl/elasticsearch-analysis-ik/releases/download/v7.1.0/elasticsearch-analysis-ik-7.1.0.zip
+#安装插件
+bin/elasticsearch-plugin install https://github.com/KennFalcon/elasticsearch-analysis-hanlp/releases/download/v7.1.0/elasticsearch-analysis-hanlp-7.1.0.zip
+
+bin/elasticsearch-plugin install https://github.com/medcl/elasticsearch-analysis-pinyin/releases/download/v7.1.0/elasticsearch-analysis-pinyin-7.1.0.zip

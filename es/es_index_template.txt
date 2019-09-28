@@ -1,0 +1,154 @@
+index Template:帮助设定Mapping和Settings，并按照一定规则自动匹配到新创建的索引上（这个是应用在index上的）
+   模板只在索引新创建时才会起作用，修改模板不是影响已创建的索引
+   可以设置多个索引模板，这些设置会被"merge"在一起
+   可以通过指定“order"的数值，控制"merge"的过程，会先应用order低的模板，然后再应用order高的模板，之前的设定会被覆盖
+   如果应用在创建索引时，用户指定了settings和mappings，会覆盖之前模板中的设定
+Dynamic Template:根据es识别的数据类型，结合字段名称，动态设定字段类型（是定义在某个索引的mapping中，template又一个名称，匹配规则是一个数组，为匹配到字段设置mapping）
+  所有的字符串字段都设定成keyword,或者关闭keyword字段
+  is开头的字段都设置成boolean
+  long_开头的都设置成long类型
+
+  匹配规则参数：match_mapping_type:匹配自动识别的字段类型，如string，boolean等
+                match，unmatch:匹配字段名
+		path_match,path_unmatch
+
+DELETE my_index
+
+PUT ttemplate/_doc/1
+{
+  "someNumber":"1",
+  "someDate":"2019/07/22"
+}
+
+GET ttemplate/_mapping
+GET ttemplate/_settings
+
+#所有索引在创建时分片和副本都设置为1.先使用order低的设定，在使用order高的设定，之前的设定会被覆盖
+PUT _template/template_default
+{
+  "index_patterns":["*"],
+  "order":0,
+  "version":1,
+  "settings":{
+    "number_of_shards":1,
+    "number_of_replicas":1
+  }
+}
+
+PUT _template/template_test
+{
+  "index_patterns":["test*"],
+  "order":1,
+  "settings":{
+    "number_of_shards":1,
+    "number_of_replicas":2
+  },
+  "mappings":{
+    "date_detection":false,
+    "numeric_detection":true
+  }
+}
+
+#查看template信息
+GET /_template/template_default
+GET /_template/temp*
+
+#写入新的数据，索引以test开头
+PUT testtemplate/_doc/1
+{
+  "someNumber":"1",
+  "someDate":"2019/07/22"
+}
+
+GET testtemplate/_mapping
+GET testtemplate/_settings
+
+PUT testmy
+{
+  "settings": {
+    "number_of_replicas": 5
+  }
+}
+
+PUT testmy/_doc/1
+{
+  "key":"wang"
+}
+GET testmy/_settings
+
+DELETE testmy
+DELETE /_template/template_default
+DELETE /_template/template_test
+
+#Dynaminc Mapping 根据类型和字段名
+DELETE my_index
+
+PUT my_index
+{
+  "mappings": {
+    "dynamic_templates":[
+      {
+        "strings_as_boolean":{
+          "match_mapping_type":"string",
+          "match":"is*",
+          "mapping":{
+            "type":"boolean"
+          }
+        }
+      },
+      {
+        "strings_as_keywords":{
+          "match_mapping_type":"string",
+          "mapping":{
+            "type":"keyword"
+          }
+        }
+      }
+    ]
+  }
+}
+
+PUT my_index/_doc/1
+{
+  "firstName":"wang",
+  "isVip":"true"
+}
+
+GET my_index/_mapping
+
+DELETE my_index
+
+#结合路径
+PUT my_index
+{
+  "mappings": {
+    "dynamic_templates":[
+      {
+        "full_name":{
+          "path_match":"name.*",
+          "path_unmatch":"*.middle",
+          "mapping":{
+            "type":"text",
+            "copy_to":"full_name"
+          }
+        }
+      }
+    ]
+  }
+}
+
+PUT my_index/_doc/1
+{
+  "name":{
+    "first":"wang",
+    "middle":"en",
+    "last":"pei"
+  }
+}
+
+GET my_index/_search?q=full_name:wang
+
+DELETE my_index
+
+  
+ 

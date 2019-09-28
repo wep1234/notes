@@ -1,0 +1,82 @@
+aggregation:聚合，是es除搜索之外，提供的对es数据进行统计分析的功能
+
+集合分类
+ Bucket Aggregation 一些列满足特定条件的文档的集合
+ Metric Aggregation 一些数学运算，可以对文档字段进行统计分析
+ Pipeline Aggregation 对其他的聚合结果进行二次聚合
+ Matrix Aggregration 支持对多个字段的操作并提供一个结果矩阵
+
+ Metric：一些系列的统计方法 （min/max/sum/avg/cardinality  stats/percentiles/percentile_ranks）
+ Bucket 一组满足条件的文档
+
+ #es 聚合
+GET kibana_sample_data_flights/_mapping
+
+#按照目的地进行分桶统计 聚合查询的size应设置为0，不然会返回查询结果，聚合结果出现在后面，terms里面的size默认为10，也可以自己设置size值
+GET kibana_sample_data_flights/_search
+{
+  "size": 0,
+  "aggs": {
+    "flight_dest": {
+      "terms": {
+        "field": "DestCountry"
+      }
+    }
+  }
+}
+
+#查看航班目的地的统计信息，增加平均，最高最低价格
+GET kibana_sample_data_flights/_search
+{
+  "size": 0,
+  "aggs": {
+    "flight_dest": {
+      "terms": {
+        "field": "DestCountry"
+      },
+      "aggs": {
+        "avg_price": {
+          "avg": {
+            "field": "AvgTicketPrice"
+          }
+        },
+        "max_price":{
+          "max": {
+            "field": "AvgTicketPrice"
+          }
+        },
+        "min_price":{
+          "min": {
+            "field": "AvgTicketPrice"
+          }
+        }
+      }
+    }
+  }
+}
+
+#价格统计加天气统计
+GET kibana_sample_data_flights/_search
+{
+  "size": 0,
+  "aggs": {
+    "flight_dest": {
+      "terms": {
+        "field": "DestCountry"
+      },
+      "aggs": {
+        "stats_price": {
+          "stats": {
+            "field": "AvgTicketPrice"
+          }
+        },
+        "weather":{
+          "terms": {
+            "field": "DestWeather",
+            "size": 4
+          }
+        }
+      }
+    }
+  }
+}

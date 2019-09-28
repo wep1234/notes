@@ -1,0 +1,76 @@
+cd /d D:\elasticSearch\elasticsearch-7.2.0\bin
+elasticsearch.bat -E node.name=node0 -E cluster.name=test -E path.data=node0_data
+POST message/_doc
+{
+  "content":"good"
+}
+
+POST message/_doc
+{
+  "content":"good morning"
+}
+
+POST message/_doc
+{
+  "content":"good morning everyone"
+}
+
+POST message/_search
+{
+  "explain": true, 
+  "query": {
+    "term": {
+      "content": {
+        "value": "good"
+      }
+    }
+  }
+}
+
+DELETE message
+
+PUT message
+{
+  "settings": {
+    "number_of_shards": 20
+  }
+}
+
+POST message/_doc?routing=1
+{
+  "content":"good"
+}
+
+POST message/_doc?routing=2
+{
+  "content":"good morning"
+}
+
+POST message/_doc?routing=3
+{
+  "content":"good morning everyone"
+}
+
+POST message/_search
+{
+  "explain": true, 
+  "query": {
+    "term": {
+      "content": {
+        "value": "good"
+      }
+    }
+  }
+}
+
+POST message/_search?search_type=dfs_query_then_fetch
+{
+
+  "query": {
+    "term": {
+      "content": {
+        "value": "good"
+      }
+    }
+  }
+}

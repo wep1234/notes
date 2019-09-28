@@ -1,0 +1,472 @@
+Mapping类似数据库中的表结构定义，主要作用 
+ 定义所以下的字段名字
+ 定义字段的类型
+ 定义倒排索引相关的配置（是否被索引？采用的Analyzer）
+
+ Dynamic Mapping:es在写入文档时候，如果索引不存在，会自动创建索引，自动根据文档信息推算字段类型（有可能推断错误如地理位置信息，类型设置错误时，
+	可能会导致一些功能无法正常运行）
+   类型自动识别：
+    JSON类型      ES类型
+    字符串       匹配日期格式，设置为date;匹配数字设置为float或long;设置为Text，并增加keyword子字段（用来做term查询）
+
+更改Mapping字段类型
+ 1.1 新增字段
+    1.1.1 Dynamic为true，一旦有新增字段的文档写入，Mapping也同时做更新
+    1.1.2 Dynamic为false，Mapping不会被更新，新增字段的数据无法被索引（即无法被搜索），但是信息会出现在_source中
+    1.1.3 Dynamic为strict，文档写入失败
+ 1.2 已有字段，一旦已经有数据写入，不再支持修改字段定义
+    Luence实现的倒排索引，一旦生成后，就不允许修改
+ 1.3 如果希望改变字段类型，必须Reindex API,重建索引（因为如果修改了字段的数据类型，会导致已被索引的无法被搜索，如果是新增的字段，就不会有这样的影响）
+
+DEMO
+ #写入文档，查看mapping
+PUT mapping_test/_doc/1
+{
+  "firstname":"wang",
+  "lastname":"enpei",
+  "createDate":"2019-07-18T20:44:05.103Z"
+}
+
+#查看mapping
+GET mapping_test/_mappinp
+
+#delete index
+DELETE mapping_test
+
+#dynamic mapping，推断字段的类型
+PUT mapping_test/_doc/1
+{
+  "uid"     : "100",
+  "isvip"   : false,
+  "isAdmin" : "true",
+  "age"     : 18,
+  "height"  : 170
+}
+
+#查看 Dynamic
+GET mapping_test/_mapping
+
+DELETE dynamic_mapping_test
+
+#默认Mapping支持dynamic，写入的文档中加入新的字段
+put dynamic_mapping_test/_doc/1
+{
+  "testfield" : "somevalue"
+}
+
+#该字段可以被搜索，数据也在_source中出现
+POST dynamic_mapping_test/_search
+{
+  "query": {
+    "match": {
+      "testfield": "somevalue"
+    }
+  }
+}
+
+#修改为dynamic false
+PUT dynamic_mapping_test/_mapping
+{
+  "dynamic":false
+}
+
+
+#新增 anotherField
+PUT dynamic_mapping_test/_doc/10
+{
+  "anotherfield" : "anothervalue"
+}
+
+#该字段不可以被搜索，应为dynamic已经被设置为false
+POST dynamic_mapping_test/_search
+{
+  "query": {
+    "match": {
+      "anotherfield": "anothervalue"
+    }
+  }
+}
+
+GET dynamic_mapping_test/_mapping
+
+GET dynamic_mapping_test/_doc/10
+
+PUT dynamic_mapping_test/_mapping
+{
+  "dynamic" : "strict"
+}
+
+#写入数据出错，HTTP code 400
+PUT dynamic_mapping_test/_doc/11
+{
+  "lastfield" : "one"
+}
+
+GET dynamic_mapping_test/_doc/11
+
+#修改为dynamic true
+PUT dynamic_mapping_test/_mapping
+{
+  "dynamic": true
+}
+
+#新增 nextfield
+PUT dynamic_mapping_test/_doc/12
+{
+  "nextfield" : "one"
+}
+
+#该字段可以被搜索，应为dynamic已经被设置为true
+POST dynamic_mapping_test/_search
+{
+  "query": {
+    "match": {
+      "nextfield": "one"
+    }
+  }
+}
+
+GET dynamic_mapping_test/_doc/12
+    
+Mapping中 index- 控制当前字段是否被索引，默认true，设置为false，该字段不能被搜索
+     4中不同的"index_options" ，控制倒排索引记录的内容
+          docs - 记录doc id
+	  freqs - 记录doc id 和 term frequencies；
+	  positions = 记录doc id/term frequenceies/term position
+	  offsets - doc id/term frequencies/term posistion/character offects
+    Text类型默认记录postions，其他默认为docs
+    记录内容越多，占用存储空间越大
+
+null_value 可以对null值实现搜索，只有keyword类型支持设定Null_Value
+copy_to设置（7以前是_all，之后被废除，用copy_to代替）
+    满足一些特定的搜索，将字段的数值拷贝到目标字段，实现类似_all的作用，copy_to的字段不出现在_source中
+数组类型 es中不提供专门的数组类型，但任何字段，都可以包含多个相同类型的数值
+
+#DEMP 
+DELETE users
+#自定义mapping
+#设置mobile不能被搜索
+PUT users
+{
+  "mappings": {
+    "properties": {
+      "firstname":{
+        "type": "text"
+      },
+      "lastname":{
+        "type":"text"
+      },
+      "mobile":{
+        "type": "text",
+        "index": false
+      }
+    }
+  }
+}
+
+GET users/_mapping
+
+#insert doc
+PUT users/_doc/1
+{
+  "firstname":"li",
+  "lastname":"si",
+  "mobile":"1335467"
+}
+
+#由于设置了mobile不能被索引 搜索会出错，返回400
+POST users/_search
+{
+  "query": {
+    "match": {
+      "mobile": "1335467"
+    }
+  }
+}
+
+POST users/_search
+{
+  "query": {
+    "match": {
+      "firstname": "li"
+    }
+  }
+}
+
+#设定Null_value
+DELETE users
+
+PUT users
+{
+  "mappings": {
+    "properties": {
+      "firstname":{
+        "type": "text"
+      },
+      "lastname":{
+        "type": "text"
+      },
+      "mobile":{
+        "type":"keyword",
+        "null_value": "NULL"
+      }
+    }
+  }
+}
+
+PUT users/_doc/1
+{
+  "firstname":"zhang",
+  "lastname":"si",
+  "mobile":null
+}
+
+PUT users/_doc/2
+{
+  "firstname":"wang",
+  "lastname":"wu"
+  
+}
+
+POST users/_search
+{
+  "query": {
+    "match": {
+      "mobile": "NULL"
+    }
+  }
+}
+
+#设置copy to
+DELETE users
+
+PUT users
+{
+  "mappings": {
+    "properties": {
+      "firstname":{
+        "type": "text",
+        "copy_to": "fullname"
+      },
+      "lastname":{
+        "type":"text",
+        "copy_to": "fullname"
+      }
+    }
+  }
+}
+
+PUT users/_doc/1
+{
+  "firstname":"zhao",
+  "lastname":"si"
+}
+
+GET users/_search?q=fullname:(zhao si)
+
+POST users/_search
+{
+  "query": {
+    "match": {
+      "fullname": {
+        "query": "zhao si",
+        "operator": "and"
+      }
+    }
+  }
+}
+
+#数组类型
+PUT users/_doc/1
+{
+  "name":"wangenpei",
+  "interest":"unknow"
+}
+GET users/_doc/1
+GET users/_mapping
+
+PUT users/_doc/1
+{
+  "name":"newname",
+  "interest":["paint","music"]
+}
+
+POST users/_search
+{
+  "query": {
+		"match_all": {}
+	}
+}
+
+DELETE users
+
+ES自定义分词
+ 当es自带的分词器无法满足需求时，可以自定义分词器，通过组合不同的组件实现
+ # Character Filters
+ # Tokenizer
+ # Token Filters
+
+Character Filters
+ 在Tokenizer（分词）前对文本进行处理，如增加删除及替换字符，可以配置多个Character Filter。会影响Tokenizer的position和offset信息
+ 自带Character Filters：HTML_strip - 去除html标签/Mapping -字符串替换/Pattern replace-正则匹配替换
+Tokenizer
+ 将文本按照一定规则切分为词
+ 内置Tokenizer：whitespaces/standard/uax_url_email/pattern/keyword/path hierarchy
+ 可以用java开发插件，实现紫的的Tokenizer
+Token Filters
+ 将Tokenizer输出的单词（term），进行增加，修改，删除
+ 自带的Token Filters：Lowercase/stop/synonym(添加近义词)
+#es 为每一个字段做倒排索引 Exact Value在索引时，不需要做分词处理
+PUT logs/_doc/1
+{
+  "level":"DEBUG"
+}
+GET logs/_mapping
+
+PUT logs/_doc/2
+{
+  "level":"INFO"
+}
+
+PUT logs/_doc/3
+{
+  "level":"INFO"
+}
+PUT logs/_doc/4
+{
+  "level":"ERROR"
+}
+
+#去除html标签
+POST _analyze
+{
+  "tokenizer": "keyword",
+  "char_filter": ["html_strip"],
+  "text": "<span>just test</span>"
+}
+
+#使用char filter进行替换
+POST _analyze
+{
+  "tokenizer": "standard",
+  "char_filter": [
+      {
+        "type":"mapping",
+        "mappings":[ "- => _" ]
+      }
+    ],
+  "text": "123-456, I-test! test-990 650-555-1234"
+}
+
+#char filter 替换标签符号
+POST _analyze
+{
+  "tokenizer": "standard",
+  "char_filter": [
+      {
+        "type":"mapping",
+        "mappings":[":) => happy",":( => sad"]
+      }
+    ],
+  "text": ["I am felling :)","Feeling :("]  
+}
+
+#正则表达式
+GET _analyze
+{
+  "tokenizer": "standard",
+  "char_filter": [
+     {
+       "type":"pattern_replace",
+       "pattern":"http://(.*)",
+       "replacement":"$1"
+     }
+    ],
+    "text" : "http://www.elastic.co"
+}
+
+#目录切分
+POST _analyze
+{
+  "tokenizer": "path_hierarchy",
+  "text":"/user/wep/doc/menu/a/b/c"
+}
+
+#whitespace与stop
+GET _analyze
+{
+  "tokenizer": "whitespace",
+  "filter": ["stop"],
+  "text": ["The rain in Spain falls mainly on the plain."]
+}
+
+GET _analyze
+{
+  "tokenizer": "whitespace",
+  "filter": ["stop","snowball"],
+  "text": ["The gilrs in China are playing this game!"]
+}
+
+#remove 加入lowercase后，The被当成stopword删除
+GET _analyze
+{
+  "tokenizer": "whitespace",
+  "filter": ["lowercase","stop"],
+  "text": ["The gilrs in China are playing this game!"]
+}
+
+DELETE logs
+DELETE my_index
+
+#Mapping中配置自定义Analyzer
+PUT my_index
+{
+  "settings": {
+    "analysis": {
+      "analyzer": {
+        "my_custom_analyzer":{
+          "type":"custom",
+          "char_filter":[
+            "emoticons"
+          ],
+          "tokenizer":"punctuation",
+          "filter":[
+            "lowercase",
+            "english_stop"
+          ]
+        }
+      },
+      "tokenizer": {
+        "punctuation":{
+          "type":"pattern",
+          "pattern":"[.,!?]"
+        }
+      },
+      "char_filter": {
+        "emoticons":{
+          "type":"mapping",
+          "mappings":[
+            ":) => _happy_",
+            ":( => _sad_"
+          ]
+        }
+      },
+      "filter": {
+        "english_stop":{
+          "type":"stop",
+          "stopwords":"_english_"
+        }
+      }
+    }
+  }
+}
+
+POST my_index/_analyze
+{
+  "analyzer" : "my_custom_analyzer",
+  "text" :     "I'm a :) person, and you?"
+}
+
+
+
+

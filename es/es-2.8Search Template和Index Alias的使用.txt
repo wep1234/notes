@@ -1,0 +1,79 @@
+POST _scripts/tmdb
+{
+  "script": {
+    "lang": "mustache",
+    "source": {
+      "_source": [
+        "title","overview"
+      ],
+      "size": 20,
+      "query": {
+        "multi_match": {
+          "query": "{{q}}",
+          "fields": ["title","overview"]
+        }
+      }
+    }
+  }
+}
+
+DELETE _scripts/tmdb
+
+
+GET _scripts/tmdb
+
+POST tmdb/_search/template
+{
+    "id":"tmdb",
+    "params": {
+        "q": "basketball with cartoon aliens"
+    }
+}
+
+PUT movies-2019/_doc
+
+POST _aliases
+{
+  "actions": [
+    {
+      "add": {
+        "index": "movies",
+        "alias": "movies-latest"
+      }
+    }
+  ]
+}
+
+POST movies-latest/_search
+{
+  "query":{
+    "match_all": {}
+  }
+}
+
+POST _aliases
+{
+  "actions": [
+    {
+      "add": {
+        "index": "movies",
+        "alias": "movies-latest-highYear",
+        "filter": {
+          "range": {
+            "year": {
+              "gte": 2000,
+              "lte": 2005
+            }
+          }
+        }
+      }
+    }
+  ]
+}
+
+POST movies-latest-highYear/_search
+{
+  "query":{
+    "match_all": {}
+  }
+}
