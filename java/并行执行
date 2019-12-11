@@ -1,0 +1,42 @@
+private static void parallerCount() throws ExecutionException, InterruptedException {
+        long startTime = System.currentTimeMillis();
+        ThreadPoolExecutor pool = new ThreadPoolExecutor(2, 2,
+                0L, TimeUnit.MILLISECONDS,
+                new LinkedBlockingQueue<Runnable>());
+        //ExecutorService executorService = Executors.newFixedThreadPool(3);
+        CountDownLatch countDownLatch = new CountDownLatch(2);
+        Future<Integer> first = pool.submit(() ->{
+            try {
+                return getNewnum(2);
+            }finally {
+                countDownLatch.countDown();
+            }
+            }
+        );
+        Future<Integer> other = pool.submit(() ->{
+                    try {
+                        return getNewnum(3);
+                    }finally {
+                        countDownLatch.countDown();
+                    }
+                }
+        );
+        System.out.println("paraller result"+(first.get()+other.get())+";countTime:"+(System.currentTimeMillis()-startTime));
+    }
+
+
+    private static void serialCount() {
+        long startTime = System.currentTimeMillis();
+        int a = getNewnum(2);
+        int b = getNewnum(3);
+        System.out.println("serial result"+(a+b)+";countTime:"+(System.currentTimeMillis()-startTime));
+    }
+
+    public static int getNewnum(int num){
+        try {
+            Thread.sleep(1000);
+        }catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        return num*2+1;
+    }
