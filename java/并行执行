@@ -21,6 +21,7 @@ private static void parallerCount() throws ExecutionException, InterruptedExcept
                     }
                 }
         );
+        countDownLatch.await();
         System.out.println("paraller result"+(first.get()+other.get())+";countTime:"+(System.currentTimeMillis()-startTime));
     }
 
