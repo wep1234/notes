@@ -1,0 +1,46 @@
+docker -zk
+获取镜像:
+
+docker pull zookeeper:3.5
+运行:
+
+docker run --name zookeeper -p 2181:2181 -d zookeeper:3.5
+操作:
+
+在docker中进入zookeeper命令行;
+docker exec -it zookeeper bash
+进入zookeeper的bin目录:
+cd bin
+使用zookeeper client访问zookeeper服务:
+./zkCli.sh
+查看
+ls /
+查看所有services:
+ls /services
+查看waiter-service的信息:
+ls /services/waiter-service
+根据[id]查看相关服务的详细信息(id是动态的):
+ls /services/waiter-service/[id]
+示例:
+
+ls /services/waiter-service/54ef0739-0627-478f-ad5a-4b7287854da4
+获取相关服务的详细信息(id是动态的):
+get /services/waiter-service/[id]
+示例:
+
+get /services/waiter-service/54ef0739-0627-478f-ad5a-4b7287854da4
+获取相关服务的详细信息(id是动态的):
+get /services/customer-service/[id]
+示例:
+
+get /services/customer-service/9df270b5-637a-451e-b69c-14f222f4cf3a
+
+
+docker - Nacos
+官方指引 https://hub.docker.com/r/nacos/nacos-server
+获取镜像
+ docker pull nacos/nacos-server
+运行镜像
+ docker run -- name nacos -d -p 8848:8848 -e MODE=Standalone nacos/nacos-server
+
+ 用户名密码为nacos
