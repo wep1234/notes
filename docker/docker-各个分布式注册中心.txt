@@ -83,3 +83,13 @@ docker 启动 kafka
   https://github.com/confluentinc/cp-docker-images
     kafka-single-node/docker-compose.yml
   docker-compose up -d
+ 
+docker 启动Zipkin
+官方指引
+ https://hub.docker.com/r/openzipkin/zipkin
+ https://github.com/openzipkin/docker-zipkin
+获取镜像
+ docker pull openzipkin/zipkin
+运行Zipkin镜像
+ docker run --name zipkin -d -p 9411:9411 openzipkin/zipkin
+  
